@@ -3,7 +3,7 @@
 [![CI](https://github.com/m-sossich/note/actions/workflows/go.yml/badge.svg)](https://github.com/m-sossich/note/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/m-sossich/note/badge.svg)](https://codecov.io/gh/m-sossich/note)
 [![Go Report Card](https://goreportcard.com/badge/github.com/m-sossich/note)](https://goreportcard.com/report/github.com/m-sossich/note)
-[![Go Reference](https://pkg.go.dev/badge/github.com/m-sossich/gonphig/pkg/gonphig.svg)](https://pkg.go.dev/github.com/m-sossich/gonphig/pkg/gonphig)
+[![Go Reference](https://pkg.go.dev/badge/github.com/m-sossich/note.svg)](https://pkg.go.dev/github.com/m-sossich/note)
 
 
 <p align="center">
