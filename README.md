@@ -1,4 +1,4 @@
-# <p align="center"><img src="https://github.com/user-attachments/assets/764a3393-2ad0-44de-9c17-ecbd60d57b50" width="300"></p>
+# <p align="center"><img src="https://raw.githubusercontent.com/m-sossich/note/master/.github/logo.png" width="300"></p>
 
 [![CI](https://github.com/m-sossich/note/actions/workflows/go.yml/badge.svg)](https://github.com/m-sossich/note/actions/workflows/go.yml)
 
@@ -7,6 +7,21 @@
 </p>
 
 ---
+
+## Specifications
+
+Language-agnostic protocol specifications in [`spec/`](spec/). Any conformant implementation in any language can interoperate with this one.
+
+| Spec | Description |
+|---|---|
+| [`spec/00-intro.md`](spec/00-intro.md) | How the layers fit together, security model, vocabulary |
+| [`spec/01-wire.md`](spec/01-wire.md) | Transport contracts, framing, codec, envelope encoding |
+| [`spec/02-node.md`](spec/02-node.md) | Connection lifecycle, handshake contract, sub-protocol dispatch |
+| [`spec/03-discovery.md`](spec/03-discovery.md) | Bootstrap protocol, liveness probing, peer events |
+| [`spec/04-dht.md`](spec/04-dht.md) | Kademlia routing, provider records, iterative lookup |
+
+---
+
 
 ```bash
 go get github.com/m-sossich/note
@@ -410,20 +425,6 @@ Defaults: 128 total / MaxPeers×2/3 inbound / 32 pending.
 | `demo/cas` | IPFS-like content-addressed storage: SHA-256 CIDs, chunked parallel multi-provider fetch, deduplication | [cas/README.md](demo/cas/README.md) |
 | `demo/gossip` | Epidemic broadcast; user-space deduplication, relay-skipping with `Peers()` + `Send()` | [gossip/README.md](demo/gossip/README.md) |
 | `demo/fileshare` | DHT-based file discovery and direct transfer | [fileshare/README.md](demo/fileshare/README.md) |
-
----
-
-## Specifications
-
-Language-agnostic protocol specifications in [`spec/`](spec/). Any conformant implementation in any language can interoperate with this one.
-
-| Spec | Description |
-|---|---|
-| [`spec/00-intro.md`](spec/00-intro.md) | How the layers fit together, security model, vocabulary |
-| [`spec/01-wire.md`](spec/01-wire.md) | Transport contracts, framing, codec, envelope encoding |
-| [`spec/02-node.md`](spec/02-node.md) | Connection lifecycle, handshake contract, sub-protocol dispatch |
-| [`spec/03-discovery.md`](spec/03-discovery.md) | Bootstrap protocol, liveness probing, peer events |
-| [`spec/04-dht.md`](spec/04-dht.md) | Kademlia routing, provider records, iterative lookup |
 
 ---
 
