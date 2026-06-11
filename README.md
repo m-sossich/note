@@ -1,6 +1,10 @@
 # <p align="center"><img src="https://raw.githubusercontent.com/m-sossich/note/master/.github/logo.png" width="300"></p>
 
 [![CI](https://github.com/m-sossich/note/actions/workflows/go.yml/badge.svg)](https://github.com/m-sossich/note/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/m-sossich/note/badge.svg)](https://codecov.io/gh/m-sossich/note)
+[![Go Report Card](https://goreportcard.com/badge/github.com/m-sossich/note)](https://goreportcard.com/report/github.com/m-sossich/note)
+[![Go Reference](https://pkg.go.dev/badge/github.com/m-sossich/gonphig/pkg/gonphig.svg)](https://pkg.go.dev/github.com/m-sossich/gonphig/pkg/gonphig)
+
 
 <p align="center">
   A modular P2P framework for Go. Peer discovery, connection lifecycle, sub-protocol dispatch, and Kademlia DHT — each as an independent, composable package.
@@ -10,7 +14,7 @@
 
 ## Specifications
 
-Language-agnostic protocol specifications in [`spec/`](spec/). Any conformant implementation in any language can interoperate with this one.
+Language-agnostic protocol specifications in [`spec/`](spec/). 
 
 | Spec | Description |
 |---|---|
