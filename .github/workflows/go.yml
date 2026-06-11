@@ -35,3 +35,12 @@ jobs:
 
     - name: Test (e2e)
       run: go test ./demo/... -v -count=1 -timeout 60s
+
+    - name: Coverage
+      run: go test ./... -coverprofile=coverage.out -covermode=atomic -timeout 60s
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.out
+        fail_ci_if_error: false
