@@ -1,4 +1,6 @@
-# <p align="center"><img src="https://raw.githubusercontent.com/m-sossich/note/master/.github/logo.png" width="300"></p>
+<div align="center">
+    <img src="https://raw.githubusercontent.com/m-sossich/note/master/.github/logo.png" width="300">
+</div><br/>
 
 [![CI](https://github.com/m-sossich/note/actions/workflows/go.yml/badge.svg)](https://github.com/m-sossich/note/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/m-sossich/note/badge.svg)](https://codecov.io/gh/m-sossich/note)
