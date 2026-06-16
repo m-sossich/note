@@ -88,7 +88,7 @@ func verifyAnnounce(msg announceMsg) bool {
 	}
 	return identity.VerifySignature(
 		ed25519.PublicKey(pubKeyBytes),
-		announceSignData(msg.NodeID, msg.Address),
+		announceSignData(msg.NodeID, msg.Address, msg.Protocols),
 		sigBytes,
 	)
 }

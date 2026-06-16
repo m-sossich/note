@@ -19,9 +19,10 @@ func (d *Discovery) marshalAndSend(addr string, msg any, msgName string) {
 
 // sendAnnounce includes the protocol list. In verified mode, the message is signed.
 func (d *Discovery) sendAnnounce(addr string) {
+	protocols := d.protocols()
 	var pubKeyB64, sigB64 string
 	if kp := d.cfg.Keypair; kp != nil {
-		data := announceSignData(d.cfg.NodeID, d.cfg.advertiseAddr())
+		data := announceSignData(d.cfg.NodeID, d.cfg.advertiseAddr(), protocols)
 		pubKeyB64 = base64.StdEncoding.EncodeToString(kp.PublicKey)
 		sigB64 = base64.StdEncoding.EncodeToString(kp.Sign(data))
 	}
@@ -30,7 +31,7 @@ func (d *Discovery) sendAnnounce(addr string) {
 		d.cfg.advertiseAddr(),
 		pubKeyB64,
 		sigB64,
-		d.protocols(),
+		protocols,
 	), "ANNOUNCE")
 }
 
