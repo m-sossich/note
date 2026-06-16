@@ -144,7 +144,7 @@ Key ownership and identity binding are verified inside the TLS handshake, which 
 | Impersonation resistance | ✗ | ✓ Requires holding the private key |
 | Targeted key-space positioning | ✗ Free | ✓ Infeasible (preimage of SHA-256) |
 | Bootstrap identity forgery | ✗ Trivial | ✓ Closed — signed ANNOUNCE |
-| Routing table injection | ✗ Trivial | ✓ Closed — signed routing entries |
+| Routing table injection | ✗ Trivial | ✓ Closed — entries without proof of identity rejected |
 | Eclipse via Sybil (real nodes) | ✗ Trivial | ⚠ Mitigated — requires real infrastructure |
 | Discovery (UDP) | ✗ Plaintext | ✗ Plaintext |
 | Peer table size cap | ✗ Unbounded | ✗ Unbounded (planned) |
@@ -154,7 +154,7 @@ Key ownership and identity binding are verified inside the TLS handshake, which 
 
 **Bootstrap identity forgery.** In verified mode, every `ANNOUNCE` message carries an Ed25519 signature over the claimed NodeID and address. The bootstrap verifies `SHA-256(public_key) == NodeID` and validates the signature before adding the peer to its directory. An adversary cannot announce a NodeID they do not own the private key for. This closes the primary bootstrap poisoning vector.
 
-**Routing table injection.** Every `FIND_NODE` response entry carries the responder's public key. The receiver verifies `SHA-256(public_key) == NodeID` before inserting the entry into its routing table. A malicious node cannot inject fabricated third-party entries — any entry it returns for a NodeID it doesn't control will fail verification and be dropped. The routing table only accumulates entries backed by cryptographic proof of identity.
+**Routing table injection.** Every `FIND_NODE` response entry must carry the responder's public key. The receiver verifies `SHA-256(public_key) == NodeID` and rejects any entry that omits the key or where the key does not match the claimed identity. A malicious node cannot inject fabricated entries — neither a wrong key nor a missing key passes. The routing table only accumulates entries backed by cryptographic proof of identity.
 
 Together, these two defenses mean that in verified mode, eclipse via fabrication is closed at both the discovery layer and the DHT routing layer. An adversary cannot insert nodes they don't own into either layer.
 

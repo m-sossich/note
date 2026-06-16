@@ -15,6 +15,8 @@ type Config struct {
 	Alpha               int           // concurrent RPCs per lookup round; default: 3
 	RequestTimeout      time.Duration // per-RPC deadline; default: 10s
 	BucketProbeInterval time.Duration // how often to probe full buckets; default: 2m
+	// EntryValidator rejects routing entries that fail proof of identity. nil accepts all.
+	EntryValidator func(nodeID string, pubKey []byte) bool
 }
 
 func (c *Config) setDefaults() {

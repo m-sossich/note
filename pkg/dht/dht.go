@@ -12,7 +12,6 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/m-sossich/note/pkg/identity"
 	"github.com/m-sossich/note/pkg/p2p"
 )
 
@@ -306,7 +305,7 @@ func (d *DHT) sendFindNode(ctx context.Context, peer NodeInfo, target DHTKey) ([
 	if err := decode(&result); err != nil {
 		return nil, fmt.Errorf("decode FIND_NODE_RESULT: %w", err)
 	}
-	return wireToNodeInfos(result.Nodes), nil
+	return d.wireToNodeInfos(result.Nodes), nil
 }
 
 func (d *DHT) sendFindProviders(ctx context.Context, peer NodeInfo, target DHTKey) ([]ProviderRecord, []NodeInfo, error) {
@@ -323,7 +322,7 @@ func (d *DHT) sendFindProviders(ctx context.Context, peer NodeInfo, target DHTKe
 	if len(result.Providers) > 0 {
 		return wireToProviderRecords(result.Providers), nil, nil
 	}
-	return nil, wireToNodeInfos(result.Nodes), nil
+	return nil, d.wireToNodeInfos(result.Nodes), nil
 }
 
 // sendStore sends STORE to peer. The declared address is included so the receiver stores a dialable address.
@@ -523,8 +522,8 @@ func nodeInfoToWire(n NodeInfo) nodeInfoWire {
 	}
 }
 
-// wireToNodeInfo converts a wire entry to NodeInfo. In verified mode, rejects entries where SHA-256(PublicKey) != NodeID.
-func wireToNodeInfo(w nodeInfoWire) (NodeInfo, error) {
+// wireToNodeInfo converts a wire entry to NodeInfo, applying the entry validator when set.
+func (d *DHT) wireToNodeInfo(w nodeInfoWire) (NodeInfo, error) {
 	key, err := parseHexKey(w.DHTKey)
 	if err != nil {
 		return NodeInfo{}, fmt.Errorf("invalid dht_key: %w", err)
@@ -535,10 +534,10 @@ func wireToNodeInfo(w nodeInfoWire) (NodeInfo, error) {
 		if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
 			return NodeInfo{}, fmt.Errorf("invalid public key encoding for node %q", w.NodeID)
 		}
-		if identity.NodeIDFrom(ed25519.PublicKey(pubKeyBytes)) != w.NodeID {
-			return NodeInfo{}, fmt.Errorf("public key does not match NodeID %q: routing entry rejected", w.NodeID)
-		}
 		pubKey = pubKeyBytes
+	}
+	if d.cfg.EntryValidator != nil && !d.cfg.EntryValidator(w.NodeID, pubKey) {
+		return NodeInfo{}, fmt.Errorf("routing entry rejected by validator for node %q", w.NodeID)
 	}
 	return NodeInfo{NodeID: w.NodeID, Address: w.Address, Key: key, PublicKey: pubKey}, nil
 }
@@ -551,10 +550,10 @@ func nodeInfosToWire(nodes []NodeInfo) []nodeInfoWire {
 	return result
 }
 
-func wireToNodeInfos(wires []nodeInfoWire) []NodeInfo {
+func (d *DHT) wireToNodeInfos(wires []nodeInfoWire) []NodeInfo {
 	var result []NodeInfo
 	for _, w := range wires {
-		n, err := wireToNodeInfo(w)
+		n, err := d.wireToNodeInfo(w)
 		if err != nil {
 			continue
 		}

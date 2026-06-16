@@ -31,11 +31,17 @@ func (nopNode) PeerProtocols(_ string) ([]string, bool)       { return nil, fals
 func (nopNode) RegisteredProtocols() []string                 { return nil }
 
 // ---------------------------------------------------------------------------
-// WireToNodeInfo / WireToNodeInfos (now unexported: wireToNodeInfo / wireToNodeInfos)
+// wireToNodeInfo / wireToNodeInfos — now methods on *DHT
 // ---------------------------------------------------------------------------
 
+// dhtForTest builds a minimal *DHT for unit tests. validator may be nil.
+func dhtForTest(validator func(string, []byte) bool) *DHT {
+	return &DHT{cfg: Config{EntryValidator: validator, BucketSize: defaultBucketSize}}
+}
+
 func TestWireToNodeInfo_InvalidHex(t *testing.T) {
-	_, err := wireToNodeInfo(nodeInfoWire{
+	d := dhtForTest(nil)
+	_, err := d.wireToNodeInfo(nodeInfoWire{
 		NodeID:  "node-1",
 		Address: "127.0.0.1:9001",
 		DHTKey:  "not-hex",
@@ -46,8 +52,9 @@ func TestWireToNodeInfo_InvalidHex(t *testing.T) {
 }
 
 func TestWireToNodeInfo_WrongLength(t *testing.T) {
+	d := dhtForTest(nil)
 	// Valid hex but only 4 bytes, not 32.
-	_, err := wireToNodeInfo(nodeInfoWire{
+	_, err := d.wireToNodeInfo(nodeInfoWire{
 		NodeID:  "node-1",
 		Address: "127.0.0.1:9001",
 		DHTKey:  "deadbeef",
@@ -58,6 +65,7 @@ func TestWireToNodeInfo_WrongLength(t *testing.T) {
 }
 
 func TestWireToNodeInfo_ValidRoundTrip(t *testing.T) {
+	d := dhtForTest(nil)
 	key := KeyFromString("test-node")
 	orig := NodeInfo{
 		NodeID:  "test-node",
@@ -65,7 +73,7 @@ func TestWireToNodeInfo_ValidRoundTrip(t *testing.T) {
 		Key:     key,
 	}
 	wire := nodeInfoToWire(orig)
-	got, err := wireToNodeInfo(wire)
+	got, err := d.wireToNodeInfo(wire)
 	if err != nil {
 		t.Fatalf("wireToNodeInfo: %v", err)
 	}
@@ -81,8 +89,9 @@ func TestWireToNodeInfo_ValidRoundTrip(t *testing.T) {
 }
 
 // TestWireToNodeInfo_PublicKey_ValidRoundTrip verifies that a NodeInfo with a
-// public key round-trips correctly and the key-to-NodeID binding is verified.
+// public key round-trips correctly through a validator-equipped DHT.
 func TestWireToNodeInfo_PublicKey_ValidRoundTrip(t *testing.T) {
+	d := dhtForTest(identity.ValidateNodeEntry)
 	kp, _ := identity.Generate()
 	orig := NodeInfo{
 		NodeID:    kp.NodeID,
@@ -91,7 +100,7 @@ func TestWireToNodeInfo_PublicKey_ValidRoundTrip(t *testing.T) {
 		PublicKey: kp.PublicKey,
 	}
 	wire := nodeInfoToWire(orig)
-	got, err := wireToNodeInfo(wire)
+	got, err := d.wireToNodeInfo(wire)
 	if err != nil {
 		t.Fatalf("wireToNodeInfo: %v", err)
 	}
@@ -104,9 +113,9 @@ func TestWireToNodeInfo_PublicKey_ValidRoundTrip(t *testing.T) {
 }
 
 // TestWireToNodeInfo_PublicKey_MismatchedNodeID verifies that an entry whose
-// public key does not hash to its claimed NodeID is rejected — the core
-// routing table injection defence.
+// public key does not hash to its claimed NodeID is rejected by the validator.
 func TestWireToNodeInfo_PublicKey_MismatchedNodeID(t *testing.T) {
+	d := dhtForTest(identity.ValidateNodeEntry)
 	kpA, _ := identity.Generate()
 	kpB, _ := identity.Generate()
 	// Claim kpB's NodeID but supply kpA's public key.
@@ -117,15 +126,16 @@ func TestWireToNodeInfo_PublicKey_MismatchedNodeID(t *testing.T) {
 		DHTKey:    encodeHex(keyB),
 		PublicKey: encodeB64(kpA.PublicKey),
 	}
-	_, err := wireToNodeInfo(w)
+	_, err := d.wireToNodeInfo(w)
 	if err == nil {
 		t.Error("expected rejection for mismatched public key / NodeID, got nil error")
 	}
 }
 
 // TestWireToNodeInfo_PublicKey_InvalidEncoding verifies that a malformed
-// base64 public key is rejected.
+// base64 public key is rejected before the validator is even called.
 func TestWireToNodeInfo_PublicKey_InvalidEncoding(t *testing.T) {
+	d := dhtForTest(identity.ValidateNodeEntry)
 	kp, _ := identity.Generate()
 	keyKP := KeyFromString(kp.NodeID)
 	w := nodeInfoWire{
@@ -134,19 +144,54 @@ func TestWireToNodeInfo_PublicKey_InvalidEncoding(t *testing.T) {
 		DHTKey:    encodeHex(keyKP),
 		PublicKey: "not-valid-base64!!!",
 	}
-	_, err := wireToNodeInfo(w)
+	_, err := d.wireToNodeInfo(w)
 	if err == nil {
 		t.Error("expected rejection for invalid public key encoding, got nil error")
 	}
 }
 
+// TestWireToNodeInfo_MissingPublicKey_Rejected verifies that in verified mode
+// (validator set) an entry with no public key is rejected — closing the routing
+// table injection vector where a malicious peer omits the key to bypass verification.
+func TestWireToNodeInfo_MissingPublicKey_Rejected(t *testing.T) {
+	d := dhtForTest(identity.ValidateNodeEntry)
+	key := KeyFromString("some-node")
+	w := nodeInfoWire{
+		NodeID:  "some-node",
+		Address: "127.0.0.1:9001",
+		DHTKey:  encodeHex(key),
+		// PublicKey intentionally absent
+	}
+	_, err := d.wireToNodeInfo(w)
+	if err == nil {
+		t.Error("expected rejection for missing public key in verified mode, got nil error")
+	}
+}
+
+// TestWireToNodeInfo_MissingPublicKey_TrustedAccepted verifies that in trusted
+// mode (nil validator) an entry without a public key is accepted.
+func TestWireToNodeInfo_MissingPublicKey_TrustedAccepted(t *testing.T) {
+	d := dhtForTest(nil)
+	key := KeyFromString("some-node")
+	w := nodeInfoWire{
+		NodeID:  "some-node",
+		Address: "127.0.0.1:9001",
+		DHTKey:  encodeHex(key),
+	}
+	_, err := d.wireToNodeInfo(w)
+	if err != nil {
+		t.Errorf("trusted mode: unexpected rejection for entry without public key: %v", err)
+	}
+}
+
 func TestWireToNodeInfos_SkipsBadEntries(t *testing.T) {
+	d := dhtForTest(nil)
 	validKey := KeyFromString("valid-node")
 	entries := []nodeInfoWire{
 		{NodeID: "valid", Address: "127.0.0.1:9001", DHTKey: encodeHex(validKey)},
 		{NodeID: "bad", Address: "127.0.0.1:9002", DHTKey: "not-hex"},
 	}
-	result := wireToNodeInfos(entries)
+	result := d.wireToNodeInfos(entries)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 valid entry, got %d: %+v", len(result), result)
 	}

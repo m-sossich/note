@@ -39,6 +39,16 @@ func VerifySignature(pub ed25519.PublicKey, data, sig []byte) bool {
 	return ed25519.Verify(pub, data, sig)
 }
 
+// ValidateNodeEntry returns true when pubKey is a valid Ed25519 key and
+// SHA-256(pubKey) == nodeID. Use as dht.Config.EntryValidator in verified mode
+// to reject routing entries that lack cryptographic proof of identity.
+func ValidateNodeEntry(nodeID string, pubKey []byte) bool {
+	if len(pubKey) != ed25519.PublicKeySize {
+		return false
+	}
+	return NodeIDFrom(ed25519.PublicKey(pubKey)) == nodeID
+}
+
 func Generate() (*Keypair, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
