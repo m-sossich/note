@@ -85,6 +85,17 @@ func TestVerifyAnnounce_MalformedPublicKey(t *testing.T) {
 	}
 }
 
+// TestVerifyAnnounce_MalformedSignature verifies that an unparsable signature
+// string is rejected before Ed25519 verification is attempted.
+func TestVerifyAnnounce_MalformedSignature(t *testing.T) {
+	kp, _ := identity.Generate()
+	msg := signedAnnounce(kp, nil)
+	msg.Signature = "not-base64!!!"
+	if verifyAnnounce(msg) {
+		t.Error("expected malformed signature to fail verification")
+	}
+}
+
 // TestVerifyAnnounce_TamperedProtocols verifies that modifying the Protocols
 // field after signing invalidates the signature — closing the MITM vector
 // where an attacker strips or replaces the protocol list in transit.
