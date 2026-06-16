@@ -26,23 +26,24 @@ func newBootstrapDiscovery(nodeID string, tr *captureSendTransport) *Discovery {
 }
 
 // signedAnnounce returns a properly signed announceMsg for use in tests.
-func signedAnnounce(kp *identity.Keypair) announceMsg {
+func signedAnnounce(kp *identity.Keypair, protocols []string) announceMsg {
 	nodeID := kp.NodeID
 	address := "10.0.0.1:9000"
-	data := announceSignData(nodeID, address)
+	data := announceSignData(nodeID, address, protocols)
 	return announceMsg{
 		Type:      msgAnnounce,
 		NodeID:    nodeID,
 		Address:   address,
 		PublicKey: base64.StdEncoding.EncodeToString(kp.PublicKey),
 		Signature: base64.StdEncoding.EncodeToString(kp.Sign(data)),
+		Protocols: protocols,
 	}
 }
 
 // TestVerifyAnnounce_ValidSignature verifies that a correctly signed ANNOUNCE passes.
 func TestVerifyAnnounce_ValidSignature(t *testing.T) {
 	kp, _ := identity.Generate()
-	msg := signedAnnounce(kp)
+	msg := signedAnnounce(kp, []string{"chat/1.0", "dht/1.0"})
 	if !verifyAnnounce(msg) {
 		t.Error("expected valid signed ANNOUNCE to pass verification")
 	}
@@ -53,7 +54,7 @@ func TestVerifyAnnounce_ValidSignature(t *testing.T) {
 func TestVerifyAnnounce_MismatchedNodeID(t *testing.T) {
 	kpA, _ := identity.Generate()
 	kpB, _ := identity.Generate()
-	msg := signedAnnounce(kpA)
+	msg := signedAnnounce(kpA, nil)
 	msg.NodeID = kpB.NodeID // claim B's ID but sign with A's key
 	if verifyAnnounce(msg) {
 		t.Error("expected mismatched NodeID to fail verification")
@@ -65,9 +66,9 @@ func TestVerifyAnnounce_MismatchedNodeID(t *testing.T) {
 func TestVerifyAnnounce_InvalidSignature(t *testing.T) {
 	kpA, _ := identity.Generate()
 	kpB, _ := identity.Generate()
-	msg := signedAnnounce(kpA)
+	msg := signedAnnounce(kpA, nil)
 	// Replace the signature with one signed by a different key.
-	msg.Signature = base64.StdEncoding.EncodeToString(kpB.Sign(announceSignData(msg.NodeID, msg.Address)))
+	msg.Signature = base64.StdEncoding.EncodeToString(kpB.Sign(announceSignData(msg.NodeID, msg.Address, msg.Protocols)))
 	if verifyAnnounce(msg) {
 		t.Error("expected wrong signature to fail verification")
 	}
@@ -77,10 +78,33 @@ func TestVerifyAnnounce_InvalidSignature(t *testing.T) {
 // is rejected.
 func TestVerifyAnnounce_MalformedPublicKey(t *testing.T) {
 	kp, _ := identity.Generate()
-	msg := signedAnnounce(kp)
+	msg := signedAnnounce(kp, nil)
 	msg.PublicKey = "not-base64!!!"
 	if verifyAnnounce(msg) {
 		t.Error("expected malformed public key to fail verification")
+	}
+}
+
+// TestVerifyAnnounce_MalformedSignature verifies that an unparsable signature
+// string is rejected before Ed25519 verification is attempted.
+func TestVerifyAnnounce_MalformedSignature(t *testing.T) {
+	kp, _ := identity.Generate()
+	msg := signedAnnounce(kp, nil)
+	msg.Signature = "not-base64!!!"
+	if verifyAnnounce(msg) {
+		t.Error("expected malformed signature to fail verification")
+	}
+}
+
+// TestVerifyAnnounce_TamperedProtocols verifies that modifying the Protocols
+// field after signing invalidates the signature — closing the MITM vector
+// where an attacker strips or replaces the protocol list in transit.
+func TestVerifyAnnounce_TamperedProtocols(t *testing.T) {
+	kp, _ := identity.Generate()
+	msg := signedAnnounce(kp, []string{"chat/1.0", "dht/1.0"})
+	msg.Protocols = []string{} // MITM strips the protocol list
+	if verifyAnnounce(msg) {
+		t.Error("expected tampered Protocols to fail verification")
 	}
 }
 
@@ -107,9 +131,9 @@ func TestHandleAnnounce_InvalidSignatureDropped(t *testing.T) {
 	tr := newCaptureTransport()
 	d := newBootstrapDiscovery("bootstrap", tr)
 
-	msg := signedAnnounce(kpA)
+	msg := signedAnnounce(kpA, nil)
 	// Replace signature with one from a different keypair — binding fails.
-	msg.Signature = base64.StdEncoding.EncodeToString(kpB.Sign(announceSignData(msg.NodeID, msg.Address)))
+	msg.Signature = base64.StdEncoding.EncodeToString(kpB.Sign(announceSignData(msg.NodeID, msg.Address, msg.Protocols)))
 
 	d.handleAnnounce("10.0.0.1:9000", msg)
 	if _, ok := d.table.Get(msg.NodeID); ok {
@@ -124,7 +148,7 @@ func TestHandleAnnounce_ValidSignatureAdded(t *testing.T) {
 	tr := newCaptureTransport()
 	d := newBootstrapDiscovery("bootstrap", tr)
 
-	d.handleAnnounce("10.0.0.1:9000", signedAnnounce(kp))
+	d.handleAnnounce("10.0.0.1:9000", signedAnnounce(kp, []string{"chat/1.0"}))
 	if _, ok := d.table.Get(kp.NodeID); !ok {
 		t.Error("valid signed ANNOUNCE should be added to peer table")
 	}

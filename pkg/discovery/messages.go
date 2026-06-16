@@ -1,6 +1,11 @@
 package discovery
 
-import "github.com/m-sossich/note/pkg/codec"
+import (
+	"sort"
+	"strings"
+
+	"github.com/m-sossich/note/pkg/codec"
+)
 
 const (
 	msgAnnounce  = "ANNOUNCE"
@@ -91,6 +96,9 @@ func marshalMsg(v any, c codec.Codec) ([]byte, error) {
 	return c.Encode(v)
 }
 
-func announceSignData(nodeID, address string) []byte {
-	return []byte(nodeID + "|" + address)
+// announceSignData returns the bytes to sign for an ANNOUNCE. Protocols are sorted for canonical ordering.
+func announceSignData(nodeID, address string, protocols []string) []byte {
+	sorted := append([]string(nil), protocols...)
+	sort.Strings(sorted)
+	return []byte(nodeID + "|" + address + "|" + strings.Join(sorted, ","))
 }
