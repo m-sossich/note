@@ -181,6 +181,55 @@ func TestDispatcher_HandlerError(t *testing.T) {
 	}
 }
 
+// TestDispatcher_ProtocolFrameTooLarge verifies that an APPLICATION frame
+// exceeding the per-protocol limit sends a FRAME_TOO_LARGE error (not
+// DECODE_ERROR) and closes the connection.
+func TestDispatcher_ProtocolFrameTooLarge(t *testing.T) {
+	jc := jsoncdc.New()
+	server, client := pipePair()
+	defer server.Close()
+	defer client.Close()
+
+	const protoLimit = 64
+	limitFor := func(protocol string) uint32 {
+		if protocol == "test/1.0" {
+			return protoLimit
+		}
+		return 0
+	}
+
+	conn := newConnection(HandshakeResult{PeerID: "peer-proto-limit"}, server, jc)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runReadLoop(conn, func(string) (ProtocolHandler, bool) { return nil, false }, limitFor)
+	}()
+
+	// Build an envelope whose serialized size exceeds protoLimit.
+	oversizedPayload := make([]byte, protoLimit+1)
+	env := wire.Envelope{Protocol: "test/1.0", Type: "MSG", Payload: oversizedPayload}
+	envBytes, _ := jc.Encode(env)
+	sendFrame(t, client, wire.Frame{Type: wire.TypeApplication, Payload: envBytes})
+
+	f := readFrame(t, client)
+	if f.Type != wire.TypeError {
+		t.Fatalf("expected ERROR frame, got 0x%02x", f.Type)
+	}
+	var werr wire.WireError
+	if err := json.Unmarshal(f.Payload, &werr); err != nil {
+		t.Fatalf("unmarshal WireError: %v", err)
+	}
+	if werr.ErrorCode != wire.CodeFrameTooLarge {
+		t.Fatalf("expected FRAME_TOO_LARGE, got %q", werr.ErrorCode)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runReadLoop did not exit after FRAME_TOO_LARGE")
+	}
+}
+
 // TestDispatcher_DecodeError verifies that an APPLICATION frame whose payload
 // cannot be decoded as an Envelope sends a DECODE_ERROR frame and closes the
 // connection (NOD-8: envelope decode failure is fatal).
