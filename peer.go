@@ -315,7 +315,11 @@ func buildAndStart(nodeID, addr string, cfg *peerConfig) (*Peer, error) {
 	registerHandlers(n, cfg)
 
 	if cfg.dhtEnabled {
-		p.d = dht.New(n, nodeID, advertiseAddr, cfg.dhtCfg)
+		dhtCfg := cfg.dhtCfg
+		if cfg.keypair != nil && dhtCfg.EntryValidator == nil {
+			dhtCfg.EntryValidator = identity.ValidateNodeEntry
+		}
+		p.d = dht.New(n, nodeID, advertiseAddr, dhtCfg)
 	}
 
 	if err := n.Start(); err != nil {

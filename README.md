@@ -174,6 +174,16 @@ providers, _ := p.FindProviders(ctx, []byte("sha256:abc123..."))
 
 For raw lookups: `p.Lookup(ctx, key)`. Custom tuning: `note.WithDHT(dht.Config{BucketSize: 20, Alpha: 5, RequestTimeout: 30 * time.Second})`.
 
+`dht.Config.EntryValidator` controls which routing entries the table accepts. `NewVerifiedPeer` sets it to `identity.ValidateNodeEntry` automatically — entries without cryptographic proof of identity are rejected. Set it explicitly when using the low-level API in verified mode:
+
+```go
+import "github.com/m-sossich/note/pkg/identity"
+
+d := dht.New(n, nodeID, addr, dht.Config{
+    EntryValidator: identity.ValidateNodeEntry,
+})
+```
+
 See [spec/04-dht.md](spec/04-dht.md) for the full Kademlia protocol.
 
 ---
@@ -220,7 +230,7 @@ defer p.Close()
 - All TCP connections encrypted and integrity-protected (mTLS)
 - Both sides prove they own their node identity
 - Bootstrap peer tables reject fake identities — ANNOUNCE messages are signed
-- DHT routing table injection closed — FIND_NODE responses carry public keys; fabricated entries are rejected
+- DHT routing table injection closed — routing entries without cryptographic proof of identity are rejected
 
 **What it does not fully close:**
 - Discovery traffic (UDP) is plaintext
