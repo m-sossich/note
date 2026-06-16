@@ -57,7 +57,7 @@ func handleApplicationFrame(conn *connection, frame wire.Frame, lookupHandler fu
 		slog.Warn("node: frame exceeds per-protocol limit",
 			"peer_id", conn.peerID, "protocol", env.Protocol,
 			"size", len(frame.Payload), "limit", limit)
-		rejectWithError(conn, conn.codec, wire.CodeDecodeError,
+		rejectWithError(conn, conn.codec, wire.CodeFrameTooLarge,
 			fmt.Sprintf("frame size %d exceeds limit %d for protocol %s", len(frame.Payload), limit, env.Protocol))
 		return true
 	}
