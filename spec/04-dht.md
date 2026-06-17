@@ -211,10 +211,12 @@ Storing a value does not write to a single node. It finds the `k` nodes closest 
    responses before returning — worst case is one RequestTimeout, not k×RequestTimeout.
 
 5. Log any STORE failures and continue.
-   The local record ensures this node is always findable for this key.
+   The local record ensures this node is findable for this key until the record expires.
 ```
 
 The operation always succeeds locally — step 2 is unconditional. Network replication is best-effort: individual `STORE` RPCs can fail if a peer is temporarily unreachable. The operation returns a result that tells the caller exactly what happened: how many nodes were attempted and how many accepted. `Attempted == 0` means the routing table is empty — the record is stored locally but no other nodes exist yet, which is expected when the network is starting up or this is the first node to announce for the key. `Replicated < Attempted` means some peers were unreachable at the time; the record is still available locally. A caller that needs stronger availability guarantees must re-announce periodically or retry after detecting partial failure — the store procedure itself does not retry.
+
+**Record TTL.** Every stored provider record carries an implicit expiry. Records that are not re-announced within the configured TTL (default 24h) are silently dropped — callers of `FIND_PROVIDERS` will no longer see them. Re-announcing before expiry resets the clock. This is the mechanism by which stale providers (nodes that have gone offline) are eventually forgotten without explicit removal.
 
 **DHT-4** — A node receiving a `STORE` request MUST persist the key-value pair and respond with `STORE_ACK { OK: true }`.
 
@@ -290,6 +292,8 @@ In `FIND_PROVIDERS_RESULT`, the presence of a non-empty `Providers` list disting
 | `k` (bucket size) | 8 | Maximum entries per k-bucket. For small networks (under 20 nodes), 4 is sufficient. For large networks (thousands of nodes), 20 is the standard — it dramatically improves resilience to churn at a moderate memory cost. |
 | `α` (alpha) | 3 | Concurrent RPCs per lookup round. Increase to 5 for faster convergence on large networks. Going higher adds load without proportional improvement. |
 | Request timeout | 10s | How long to wait for a single RPC response. Tune to your network's 95th-percentile round-trip time plus a margin. LAN networks can use 500ms; global networks may need 30s. A timeout that fires before most responses arrive forces every lookup to run to candidate exhaustion, which is slow and network-intensive. |
+| Record TTL | 24h | How long a provider record remains live without re-announcement. Re-announcing resets the clock. A provider that stops republishing is silently forgotten after this window. High-churn networks should use a shorter TTL and re-announce more frequently. |
+| Store cleanup interval | 10m | How often the background cleaner evicts expired records. `lookupLocal` also filters on every read, so stale data is never returned between cleanup runs — the interval only affects memory reclaim timing. |
 
 
 ## Requirements Summary
@@ -304,3 +308,4 @@ In `FIND_PROVIDERS_RESULT`, the presence of a non-empty `Providers` list disting
 | DHT-6 | MAY | Seed routing table without liveness probe; evict LRU unconditionally when bucket is full |
 | DHT-7 | MUST / SHOULD | FIND_PROVIDERS_RESULT contains Providers OR Nodes, never both non-empty; treat both-non-empty as not-found |
 | DHT-8 | MUST | Only seed routing table with peers that include dht/1.0 in their protocol list or have unknown (nil) capabilities; remove peers when capabilities become known and exclude dht/1.0 |
+| DHT-9 | MUST | Provider records MUST expire after the configured TTL. Expired records MUST NOT be returned by FIND_PROVIDERS. Re-announcing MUST reset the TTL. |

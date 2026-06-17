@@ -174,6 +174,15 @@ providers, _ := p.FindProviders(ctx, []byte("sha256:abc123..."))
 
 For raw lookups: `p.Lookup(ctx, key)`. Custom tuning: `note.WithDHT(dht.Config{BucketSize: 20, Alpha: 5, RequestTimeout: 30 * time.Second})`.
 
+**Provider record TTL.** Records expire after `RecordTTL` (default 24h). Re-announcing before expiry resets the clock. A background cleaner evicts expired records every `StoreCleanupInterval` (default 10m); `lookupLocal` also filters expired records on every read so stale data is never returned between cleanup runs.
+
+```go
+note.WithDHT(dht.Config{
+    RecordTTL:            30 * time.Minute, // aggressive expiry for high-churn networks
+    StoreCleanupInterval: 5 * time.Minute,
+})
+```
+
 `dht.Config.EntryValidator` controls which routing entries the table accepts. `NewVerifiedPeer` sets it to `identity.ValidateNodeEntry` automatically — entries without cryptographic proof of identity are rejected. Set it explicitly when using the low-level API in verified mode:
 
 ```go

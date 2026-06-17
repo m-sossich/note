@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/m-sossich/note/pkg/identity"
 	"github.com/m-sossich/note/pkg/node"
@@ -413,13 +414,94 @@ func TestHandleMessage_UnknownType(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// lookupLocal / storeLocal / evictExpiredRecords — TTL
+// ---------------------------------------------------------------------------
+
+// TestLookupLocal_ExpiredRecordFiltered verifies that a record past its TTL is
+// not returned by lookupLocal even before the background cleaner runs.
+func TestLookupLocal_ExpiredRecordFiltered(t *testing.T) {
+	d := &DHT{cfg: Config{RecordTTL: time.Millisecond}, store: make(map[DHTKey][]storedRecord)}
+	key := KeyFromString("expired-test")
+	d.storeLocal(key, ProviderRecord{NodeID: "n1", Address: "127.0.0.1:9001"})
+
+	time.Sleep(5 * time.Millisecond)
+
+	_, ok := d.lookupLocal(key)
+	if ok {
+		t.Error("lookupLocal should return false for expired record")
+	}
+}
+
+// TestStoreLocal_ReannounceRefreshesTTL verifies that re-announcing a key
+// resets its TTL so it remains live after the original TTL would have expired.
+func TestStoreLocal_ReannounceRefreshesTTL(t *testing.T) {
+	const ttl = 50 * time.Millisecond
+	d := &DHT{cfg: Config{RecordTTL: ttl}, store: make(map[DHTKey][]storedRecord)}
+	key := KeyFromString("refresh-test")
+	rec := ProviderRecord{NodeID: "n1", Address: "127.0.0.1:9001"}
+
+	d.storeLocal(key, rec)
+	time.Sleep(ttl / 2)
+	d.storeLocal(key, rec) // re-announce resets storedAt
+	time.Sleep(ttl / 2)    // original TTL would have expired, but refresh extended it
+
+	recs, ok := d.lookupLocal(key)
+	if !ok {
+		t.Fatal("record should still be live after re-announce")
+	}
+	if len(recs) != 1 || recs[0].NodeID != "n1" {
+		t.Errorf("unexpected records: %+v", recs)
+	}
+}
+
+// TestEvictExpiredRecords_RemovesStaleKeys verifies that evictExpiredRecords
+// deletes map entries whose all records have expired, bounding memory growth.
+func TestEvictExpiredRecords_RemovesStaleKeys(t *testing.T) {
+	d := &DHT{cfg: Config{RecordTTL: time.Millisecond}, store: make(map[DHTKey][]storedRecord)}
+	key := KeyFromString("evict-test")
+	d.storeLocal(key, ProviderRecord{NodeID: "n1", Address: "127.0.0.1:9001"})
+
+	time.Sleep(5 * time.Millisecond)
+	d.evictExpiredRecords()
+
+	d.storeMu.RLock()
+	_, exists := d.store[key]
+	d.storeMu.RUnlock()
+	if exists {
+		t.Error("evictExpiredRecords should delete keys with no live records")
+	}
+}
+
+// TestEvictExpiredRecords_PreservesLiveRecords verifies that eviction only
+// removes expired records, leaving live ones intact.
+func TestEvictExpiredRecords_PreservesLiveRecords(t *testing.T) {
+	const ttl = 100 * time.Millisecond
+	d := &DHT{cfg: Config{RecordTTL: ttl}, store: make(map[DHTKey][]storedRecord)}
+	key := KeyFromString("mixed-test")
+
+	d.storeLocal(key, ProviderRecord{NodeID: "old", Address: "127.0.0.1:9001"})
+	time.Sleep(ttl + 5*time.Millisecond)
+	d.storeLocal(key, ProviderRecord{NodeID: "new", Address: "127.0.0.1:9002"})
+
+	d.evictExpiredRecords()
+
+	recs, ok := d.lookupLocal(key)
+	if !ok {
+		t.Fatal("live record should survive eviction")
+	}
+	if len(recs) != 1 || recs[0].NodeID != "new" {
+		t.Errorf("expected only live record, got %+v", recs)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // lookupLocal (via storeLocal — both are unexported, same package)
 // ---------------------------------------------------------------------------
 
 // TestLookupLocal_ReturnsCopy verifies that lookupLocal returns a copy:
 // mutating the returned slice must not affect the stored records.
 func TestLookupLocal_ReturnsCopy(t *testing.T) {
-	d := &DHT{store: make(map[DHTKey][]ProviderRecord)}
+	d := &DHT{cfg: Config{RecordTTL: defaultRecordTTL}, store: make(map[DHTKey][]storedRecord)}
 	key := KeyFromString("copy-test")
 	rec := ProviderRecord{NodeID: "n1", Address: "127.0.0.1:9001", Value: []byte("hello world")}
 	d.storeLocal(key, rec)

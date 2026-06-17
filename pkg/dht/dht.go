@@ -37,11 +37,17 @@ type ProviderRecord struct {
 }
 
 // DHT is a Kademlia routing and storage layer. Call Stop before stopping the node.
+// storedRecord wraps a ProviderRecord with its insertion/refresh timestamp.
+type storedRecord struct {
+	rec      ProviderRecord
+	storedAt time.Time
+}
+
 type DHT struct {
 	cfg      Config
 	local    NodeInfo
 	table    *routingTable
-	store    map[DHTKey][]ProviderRecord
+	store    map[DHTKey][]storedRecord
 	storeMu  sync.RWMutex
 	n        nodeLink
 	pending  p2p.PendingMap[func(any) error]
@@ -62,14 +68,15 @@ func New(n nodeLink, nodeID string, address string, cfg Config) *DHT {
 			Key:     key,
 		},
 		table:   newRoutingTable(key, cfg.BucketSize),
-		store:   make(map[DHTKey][]ProviderRecord),
+		store:   make(map[DHTKey][]storedRecord),
 		n:       n,
 		pending: *p2p.NewPendingMap[func(any) error](),
 		stopCh:  make(chan struct{}),
 	}
 	n.Register(Protocol, d.handleMessage)
-	d.wg.Add(1)
+	d.wg.Add(2)
 	go d.bucketProber()
+	go d.storeCleaner()
 	return d
 }
 
@@ -591,31 +598,74 @@ func wireToProviderRecords(wires []providerRecordWire) []ProviderRecord {
 	return result
 }
 
-// storeLocal inserts or updates a provider record. Re-announcing refreshes address and value.
+// storeLocal inserts or updates a provider record. Re-announcing refreshes address, value, and TTL.
 func (d *DHT) storeLocal(target DHTKey, rec ProviderRecord) {
+	now := time.Now()
 	d.storeMu.Lock()
 	defer d.storeMu.Unlock()
 	records := d.store[target]
 	for i, r := range records {
-		if r.NodeID == rec.NodeID {
-			records[i] = rec
+		if r.rec.NodeID == rec.NodeID {
+			records[i] = storedRecord{rec: rec, storedAt: now}
 			d.store[target] = records
 			return
 		}
 	}
-	d.store[target] = append(records, rec)
+	d.store[target] = append(records, storedRecord{rec: rec, storedAt: now})
 }
 
 func (d *DHT) lookupLocal(target DHTKey) ([]ProviderRecord, bool) {
+	now := time.Now()
 	d.storeMu.RLock()
-	recs, ok := d.store[target]
+	entries, ok := d.store[target]
 	d.storeMu.RUnlock()
-	if !ok || len(recs) == 0 {
+	if !ok {
 		return nil, false
 	}
-	result := make([]ProviderRecord, len(recs))
-	copy(result, recs)
+	var result []ProviderRecord
+	for _, e := range entries {
+		if now.Sub(e.storedAt) < d.cfg.RecordTTL {
+			result = append(result, e.rec)
+		}
+	}
+	if len(result) == 0 {
+		return nil, false
+	}
 	return result, true
+}
+
+// storeCleaner periodically evicts expired provider records.
+func (d *DHT) storeCleaner() {
+	defer d.wg.Done()
+	ticker := time.NewTicker(d.cfg.StoreCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			d.evictExpiredRecords()
+		case <-d.stopCh:
+			return
+		}
+	}
+}
+
+func (d *DHT) evictExpiredRecords() {
+	now := time.Now()
+	d.storeMu.Lock()
+	defer d.storeMu.Unlock()
+	for key, entries := range d.store {
+		var live []storedRecord
+		for _, e := range entries {
+			if now.Sub(e.storedAt) < d.cfg.RecordTTL {
+				live = append(live, e)
+			}
+		}
+		if len(live) == 0 {
+			delete(d.store, key)
+		} else {
+			d.store[key] = live
+		}
+	}
 }
 
 func dedupProviders(records []ProviderRecord) []ProviderRecord {
