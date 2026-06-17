@@ -6,8 +6,8 @@ import (
 
 	jsoncdc "github.com/m-sossich/note/pkg/codec/json"
 	"github.com/m-sossich/note/pkg/discovery"
-	tcptransport "github.com/m-sossich/note/pkg/transport/tcp"
 	"github.com/m-sossich/note/pkg/transport"
+	tcptransport "github.com/m-sossich/note/pkg/transport/tcp"
 	"github.com/m-sossich/note/pkg/wire"
 )
 
