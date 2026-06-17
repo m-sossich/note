@@ -94,7 +94,9 @@ func main() {
 
 func runBootstrap(addr, idPath string) {
 	kp := loadOrGenerateKey(idPath, addr)
-	p, err := note.NewVerifiedPeer(kp, addr)
+	p, err := note.NewVerifiedPeer(kp, addr,
+		note.WithDiscoveryMaxPeers(1000),
+	)
 	if err != nil {
 		slog.Error("start bootstrap", "err", err)
 		os.Exit(1)

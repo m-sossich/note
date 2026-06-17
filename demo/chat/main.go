@@ -28,15 +28,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	note "github.com/m-sossich/note"
-	"github.com/m-sossich/note/demo/chat/protocol"
-	"github.com/m-sossich/note/pkg/identity"
-	"github.com/m-sossich/note/pkg/node"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
+
+	note "github.com/m-sossich/note"
+	"github.com/m-sossich/note/demo/chat/protocol"
+	"github.com/m-sossich/note/pkg/dht"
+	"github.com/m-sossich/note/pkg/identity"
+	"github.com/m-sossich/note/pkg/node"
 )
 
 func main() {
@@ -77,7 +80,10 @@ func main() {
 // application protocols — with capability filtering, chat nodes never route
 // chat/1.0 or dht/1.0 traffic through it.
 func runBootstrap(addr, idPath string, bootstrapAddrs []string, advertiseAddr string, trusted bool) {
-	opts := []note.Option{note.WithBootstrap(bootstrapAddrs...)}
+	opts := []note.Option{
+		note.WithBootstrap(bootstrapAddrs...),
+		note.WithDiscoveryMaxPeers(1000),
+	}
 	if advertiseAddr != "" {
 		opts = append(opts, note.WithAdvertiseAddr(advertiseAddr))
 	}
@@ -111,7 +117,10 @@ func runJoin(addr, idPath string, bootstrapAddrs []string, advertiseAddr, room, 
 	var h *protocol.Handler
 	opts := []note.Option{
 		note.WithBootstrap(bootstrapAddrs...),
-		note.WithDHT(),
+		// Room membership records expire in 30 minutes. A user who leaves without
+		// explicitly quitting is forgotten after one TTL window. Re-announce every
+		// 15 minutes (see doJoin) to stay visible while the session is active.
+		note.WithDHT(dht.Config{RecordTTL: 30 * time.Minute}),
 	}
 	if advertiseAddr != "" {
 		opts = append(opts, note.WithAdvertiseAddr(advertiseAddr))
@@ -159,17 +168,29 @@ func doJoin(p *note.Peer, h *protocol.Handler, room, username string) {
 	fmt.Printf("--- type a message and press Enter (messages go to whoever is connected)\n")
 	fmt.Printf("--- /members to list room members, /quit to exit\n")
 
-	// Announce room membership in DHT after a brief settling delay so the
-	// routing table has a chance to populate. Peers already connected will
-	// have received an ANNOUNCE via OnPeerConnected; this makes us
-	// discoverable by peers who join later.
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Announce room membership immediately so peers who join later can find us.
+	// Re-announce every 15 minutes to stay visible before the 30-minute RecordTTL expires.
 	go func() {
-		ctx := context.Background()
-		res, err := p.Announce(ctx, roomKey(room), []byte(username))
-		if err != nil {
-			slog.Warn("DHT announce failed", "err", err)
-		} else if res.Attempted > 0 && res.Replicated == 0 {
-			slog.Warn("DHT announce: no peers replicated", "room", room, "attempted", res.Attempted)
+		announce := func() {
+			res, err := p.Announce(ctx, roomKey(room), []byte(username))
+			if err != nil {
+				slog.Warn("DHT announce failed", "err", err)
+			} else if res.Attempted > 0 && res.Replicated == 0 {
+				slog.Warn("DHT announce: no peers replicated", "room", room, "attempted", res.Attempted)
+			}
+		}
+		announce()
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				announce()
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -179,6 +200,7 @@ func doJoin(p *note.Peer, h *protocol.Handler, room, username string) {
 	go readStdin(p, h, room, username, quit)
 
 	<-quit
+	cancel()
 	fmt.Printf("\n--- %s left the room\n", username)
 }
 
