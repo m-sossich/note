@@ -13,8 +13,9 @@ type Handler func(peerID string, msgType string, decode func(any) error) error
 
 // ConnInfo holds observable state of a connected peer.
 type ConnInfo struct {
-	RemoteAddr string
-	PublicKey  []byte // nil in trusted mode
+	RemoteAddr   string // transport-layer address; ephemeral for inbound connections
+	DeclaredAddr string // peer's announced listening address from discovery; empty if unknown
+	PublicKey    []byte // nil in trusted mode
 }
 
 // HandshakeConfig carries local identity for use at connection time.

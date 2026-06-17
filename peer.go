@@ -422,9 +422,11 @@ func (p *Peer) seedDHT(peerID string) {
 	if known && !containsString(protos, dht.Protocol) {
 		return
 	}
-	if info, ok := p.n.ConnectionInfo(peerID); ok {
-		p.d.SeedPeer(peerID, info.RemoteAddr, info.PublicKey)
+	info, ok := p.n.ConnectionInfo(peerID)
+	if !ok || info.DeclaredAddr == "" {
+		return // no declared address — ephemeral source port is not dialable (DHT-2)
 	}
+	p.d.SeedPeer(peerID, info.DeclaredAddr, info.PublicKey)
 }
 
 func (p *Peer) onPeerCapabilitiesKnown(peerID string, protocols []string) {

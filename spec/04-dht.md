@@ -229,7 +229,7 @@ An empty routing table cannot perform any lookups. When a node first joins the n
 
 **DHT-8** — The routing table MUST only be seeded with peers whose capability set includes `dht/1.0` or whose capability set is unknown (nil). Peers with a known protocol list that does not include `dht/1.0` MUST NOT be inserted. If a peer's capabilities become known after insertion (via `OnPeerCapabilitiesKnown`) and do not include `dht/1.0`, the peer MUST be removed from the routing table.
 
-The idiomatic way to seed the routing table is from the `OnPeerConnected` callback: when the node layer establishes a connection to a new peer, check its protocol list (via `PeerProtocols`) and insert into the routing table only if DHT-capable. As peers appear through discovery and connect via TCP, the routing table fills automatically without any separate bootstrap step. Be aware of the address limitation described below — the address available from an inbound connection is the ephemeral source port, not the peer's listening address. For reliable routing table entries, prefer outbound connections where the address is always the peer's declared listening address.
+The idiomatic way to seed the routing table is from the `OnPeerConnected` callback: when the node layer establishes a connection to a new peer, check its protocol list (via `PeerProtocols`) and insert into the routing table only if DHT-capable. Use `ConnectionInfo.DeclaredAddr` as the routing table address — it is populated from the peer's `ANNOUNCE` message and is always dialable. Skip peers where `DeclaredAddr` is empty; their address will be recorded once their `ANNOUNCE` is received.
 
 
 ## Known Limitations
@@ -256,13 +256,11 @@ In verified mode this DHT provides strong protection against fabrication attacks
 
 ### Address Limitation: Routing Table Entries from Inbound Connections
 
-When a peer connects TO this node (an inbound TCP connection), the address observed by the connection layer is the peer's ephemeral source port — not their declared listening address. A concrete example makes this clear: when node A connects to node B, A's TCP stack picks an ephemeral source port — say 54321 — for that connection. That port belongs to this connection only. If B tries to connect back using A:54321, nothing is listening there. The address A declared in its `ANNOUNCE` message (e.g., A:9000) is the actual listening address. This is why the `STORE` message carries the sender's declared address explicitly rather than relying on the transport to provide it.
+When a peer connects TO this node (an inbound TCP connection), the address observed by the transport layer is the peer's ephemeral source port — not their declared listening address. When node A connects to node B, A's TCP stack picks an ephemeral source port (e.g., 54321) for that connection only. If B later tries to dial A:54321, nothing is listening there. A's actual listening address is what A declared in its `ANNOUNCE` message (e.g., A:9000).
 
-**STORE messages are not affected by this limitation.** The `STORE` message carries the sender's declared listening address explicitly. Nodes that announce themselves as providers for a key always supply a dialable address, regardless of whether the connection was inbound or outbound. `FIND_PROVIDERS` responses therefore always carry correct, dialable provider addresses.
+The node layer resolves this by storing each peer's declared address from the `ANNOUNCE`-derived `peer-found` event. `ConnectionInfo` returns this declared address as `DeclaredAddr`, which is what `refreshSender`, `seedDHT`, and the `STORE` fallback use. A peer whose `ANNOUNCE` has not yet been received has an empty `DeclaredAddr` — those peers are skipped rather than inserted with an undialable ephemeral address.
 
-**Routing table entries are still affected.** Entries inserted via `refreshSender` (which runs on every inbound DHT message) use the ephemeral source address observed by the connection layer. These entries are used for routing lookups — deciding which nodes to ask about a key — but not for the final provider addresses returned to consumers.
-
-The practical consequence is degraded routing efficiency when routing through inbound-connection nodes: the lookup may fail to reach them via the routing table. Applications that need maximum routing efficiency should ensure bidirectional connections so that routing table entries are created from outbound connections, where the address is always correct.
+**Residual gap.** A peer that connects inbound before its `ANNOUNCE` has propagated to this node will have an empty `DeclaredAddr` and will not appear in the routing table until a `peer-found` event arrives. In practice this window is short — discovery and TCP connection setup happen concurrently — but it is not zero.
 
 
 ## Wire Message Reference
