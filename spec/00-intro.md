@@ -147,7 +147,7 @@ Key ownership and identity binding are verified inside the TLS handshake, which 
 | Routing table injection | ✗ Trivial | ✓ Closed — entries without proof of identity rejected |
 | Eclipse via Sybil (real nodes) | ✗ Trivial | ⚠ Mitigated — requires real infrastructure |
 | Discovery (UDP) | ✗ Plaintext | ✗ Plaintext |
-| Peer table size cap | ✗ Unbounded | ✗ Unbounded (planned) |
+| Peer table size cap | ✗ Unbounded | ✓ Configurable — evicts least-live peer on overflow |
 | Disjoint-path lookups | ✗ | ✗ Planned (S/Kademlia) |
 
 **What verified mode closes.**
@@ -162,13 +162,13 @@ Together, these two defenses mean that in verified mode, eclipse via fabrication
 
 **Eclipse via Sybil with real nodes.** An adversary who generates many valid Ed25519 keypairs and runs actual network nodes can still statistically dominate key space regions. They cannot target specific positions (SHA-256 produces unpredictable positions), but with enough nodes they can achieve probabilistic dominance. The attack now requires real running infrastructure — not just free identity generation — which raises the cost significantly. For most deployments this is an acceptable remaining risk, but it is not zero.
 
-**Bootstrap peer table is unbounded.** A Sybil attack with many real signing nodes can flood a bootstrap's peer table without limit. There is no eviction policy or maximum size. An adversary who pre-populates the bootstrap table with thousands of real adversarial nodes before legitimate peers announce will dominate the FIND_PEERS responses seen by joining nodes.
+**Bootstrap peer table is configurable.** The peer table accepts a `MaxPeers` cap. When the table is full and a new ANNOUNCE arrives, the peer with the most consecutive missed pings is evicted; ties are broken randomly. This makes pre-join flooding expensive — adversarial nodes that fill the table must stay alive (keep responding to pings) or be displaced by the eviction policy. `MaxPeers = 0` (the default) is unbounded; set it on bootstrap infrastructure to bound memory.
 
 **Discovery traffic is plaintext UDP.** The signature on ANNOUNCE proves identity but does not encrypt the announcement. Observers on the network path see which nodes are joining the network and which bootstraps they contact.
 
 ### What remains
 
-**Peer table size cap.** Bootstrap nodes currently accept all verified ANNOUNCEs without a table size limit. A Sybil attack with real nodes can flood the table. Adding a configurable maximum with an eviction policy (e.g., evict the oldest uncontacted entry when full) would bound memory and limit the effectiveness of pre-join flooding.
+**Remaining Sybil surface.** Even with `MaxPeers` set, an adversary who runs enough real, live nodes can still statistically dominate the table — they just have to keep responding to pings. The cap bounds memory and raises the infrastructure cost, but does not fully close the Sybil attack.
 
 **S/Kademlia disjoint-path lookups.** Lookups follow a single converging path. Parallel lookups on `k` disjoint paths (Baumgart & Mies, 2007) are required for full eclipse resistance against an adversary with many legitimate-but-malicious nodes already in the routing table. Without this, an adversary who controls one routing path can steer a lookup even with signed routing entries. This is the remaining architectural gap for complete eclipse resistance in verified mode.
 

@@ -164,6 +164,7 @@ All messages carry a `Type` field as the discriminator.
 | Bootstrap addresses | none | UDP addresses of well-known nodes to contact on startup. |
 | Ping interval | 1s | How often to probe peer liveness. |
 | Max missed pings | 3 | Missed probes before eviction. With defaults, a silent peer is evicted within ~3s. |
+| Max peers | 0 (unbounded) | Maximum peer table size. When full and a new ANNOUNCE arrives, the peer with the most consecutive missed pings is evicted; ties are broken randomly. Set this on bootstrap nodes to bound memory and limit Sybil pre-join flooding. |
 | Codec | required | Encoding for all UDP messages. Must match the codec used by all other nodes. |
 
 
@@ -184,3 +185,4 @@ All messages carry a `Type` field as the discriminator.
 | DISC-12 | MUST | Silently drop packets with missing or unrecognized Type field |
 | DISC-13 | MUST / SHOULD | Cap PEERS responses at 100 entries; sample randomly when over limit |
 | DISC-14 | MUST | Include self-entry (NodeID, Address, Protocols) in every PEERS response, unless requester == self |
+| DISC-15 | SHOULD | When MaxPeers is set and the table is full, evict the peer with the most missed pings before inserting a new one; break ties randomly; emit peer-lost for the evicted peer |

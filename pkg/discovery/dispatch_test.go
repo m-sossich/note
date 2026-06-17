@@ -52,7 +52,7 @@ func TestLivenessTick_EmptyTable(t *testing.T) {
 	d := &Discovery{
 		cfg:     Config{NodeID: "test-node", PingInterval: time.Hour, PingMaxMissed: 3},
 		tr:      ft,
-		table:   newPeerTable(),
+		table:   newPeerTable(0),
 		events:  make(chan PeerEvent, 8),
 		stopCh:  make(chan struct{}),
 		pending: make(map[string]string),
@@ -75,12 +75,12 @@ func TestHandlePong_UnknownNonce(t *testing.T) {
 	d := &Discovery{
 		cfg:     Config{NodeID: "test-node", PingInterval: time.Hour, PingMaxMissed: 3},
 		tr:      ft,
-		table:   newPeerTable(),
+		table:   newPeerTable(0),
 		events:  make(chan PeerEvent, 8),
 		stopCh:  make(chan struct{}),
 		pending: make(map[string]string),
 	}
-	d.table.Add("peer-1", "127.0.0.1:9001", nil)
+	_, _ = d.table.Add("peer-1", "127.0.0.1:9001", nil)
 	d.table.MarkPingSent("peer-1")
 
 	// handlePong with a nonce that is not in d.pending.
@@ -100,7 +100,7 @@ func TestHandlePeers_FiltersSelf(t *testing.T) {
 	d := &Discovery{
 		cfg:     Config{NodeID: localID, PingInterval: time.Hour, PingMaxMissed: 3},
 		tr:      ft,
-		table:   newPeerTable(),
+		table:   newPeerTable(0),
 		events:  make(chan PeerEvent, 8),
 		stopCh:  make(chan struct{}),
 		pending: make(map[string]string),

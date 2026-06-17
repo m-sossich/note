@@ -44,7 +44,10 @@ func (d *Discovery) handlePeers(msg peersMsg) {
 		if p.NodeID == d.cfg.NodeID {
 			continue // never add self
 		}
-		added := d.table.Add(p.NodeID, p.Address, p.Protocols)
+		added, evicted := d.table.Add(p.NodeID, p.Address, p.Protocols)
+		if evicted != nil {
+			d.emitEvent(PeerEvent{Type: PeerLost, PeerID: evicted.NodeID, Address: evicted.Address})
+		}
 		if added {
 			d.emitEvent(PeerEvent{
 				Type:      PeerFound,

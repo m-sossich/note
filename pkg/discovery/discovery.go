@@ -37,6 +37,7 @@ type Config struct {
 	BootstrapAddrs []string
 	PingInterval   time.Duration     // default: 1s
 	PingMaxMissed  int               // default: 3
+	MaxPeers       int               // max peer table size; 0 = unbounded. When full, evicts the least-live peer.
 	Protocols      []string          // advertised in ANNOUNCE so peers know capabilities
 	Codec          codec.Codec       // defaults to JSON; both sides must match
 	Keypair        *identity.Keypair // when set, ANNOUNCE messages are signed
@@ -82,7 +83,7 @@ func New(cfg Config, tr transport.PacketTransport) (*Discovery, error) {
 	return &Discovery{
 		cfg:           cfg,
 		tr:            tr,
-		table:         newPeerTable(),
+		table:         newPeerTable(cfg.MaxPeers),
 		events:        make(chan PeerEvent, eventChanSize),
 		stopCh:        make(chan struct{}),
 		pending:       make(map[string]string),

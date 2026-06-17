@@ -17,7 +17,7 @@ func newBootstrapDiscovery(nodeID string, tr *captureSendTransport) *Discovery {
 			Codec:  testCodec(),
 		},
 		tr:            tr,
-		table:         newPeerTable(),
+		table:         newPeerTable(0),
 		events:        make(chan PeerEvent, 64),
 		stopCh:        make(chan struct{}),
 		pending:       make(map[string]string),
@@ -151,6 +151,87 @@ func TestHandleAnnounce_ValidSignatureAdded(t *testing.T) {
 	d.handleAnnounce("10.0.0.1:9000", signedAnnounce(kp, []string{"chat/1.0"}))
 	if _, ok := d.table.Get(kp.NodeID); !ok {
 		t.Error("valid signed ANNOUNCE should be added to peer table")
+	}
+}
+
+// TestHandleAnnounce_EmitsPeerLostOnEviction verifies that when the peer table
+// is full and a new ANNOUNCE arrives, a peer-lost event is emitted for the
+// evicted peer alongside the peer-found event for the new one.
+func TestHandleAnnounce_EmitsPeerLostOnEviction(t *testing.T) {
+	tr := newCaptureTransport()
+	d := &Discovery{
+		cfg:           Config{NodeID: "bootstrap", Codec: testCodec(), MaxPeers: 1},
+		tr:            tr,
+		table:         newPeerTable(1),
+		events:        make(chan PeerEvent, 8),
+		stopCh:        make(chan struct{}),
+		pending:       make(map[string]string),
+		pendingByPeer: make(map[string]string),
+	}
+
+	// Fill the table.
+	d.handleAnnounce("10.0.0.1:9000", announceMsg{
+		Type: msgAnnounce, NodeID: "peer-A", Address: "10.0.0.1:9000",
+	})
+	<-d.events // drain peer-found for peer-A
+
+	// Second ANNOUNCE must evict peer-A and emit peer-lost + peer-found.
+	d.handleAnnounce("10.0.0.2:9000", announceMsg{
+		Type: msgAnnounce, NodeID: "peer-B", Address: "10.0.0.2:9000",
+	})
+
+	var gotLost, gotFound bool
+	for len(d.events) > 0 {
+		ev := <-d.events
+		if ev.Type == PeerLost && ev.PeerID == "peer-A" {
+			gotLost = true
+		}
+		if ev.Type == PeerFound && ev.PeerID == "peer-B" {
+			gotFound = true
+		}
+	}
+	if !gotLost {
+		t.Error("expected peer-lost event for evicted peer-A")
+	}
+	if !gotFound {
+		t.Error("expected peer-found event for new peer-B")
+	}
+}
+
+// TestHandlePeers_EmitsPeerLostOnEviction verifies that a PEERS response also
+// emits peer-lost when the table is full and eviction occurs.
+func TestHandlePeers_EmitsPeerLostOnEviction(t *testing.T) {
+	tr := newCaptureTransport()
+	d := &Discovery{
+		cfg:           Config{NodeID: "node", Codec: testCodec(), MaxPeers: 1},
+		tr:            tr,
+		table:         newPeerTable(1),
+		events:        make(chan PeerEvent, 8),
+		stopCh:        make(chan struct{}),
+		pending:       make(map[string]string),
+		pendingByPeer: make(map[string]string),
+	}
+
+	d.handlePeers(peersMsg{
+		Type:  msgPeers,
+		Peers: []peerEntry{{NodeID: "peer-A", Address: "10.0.0.1:9000"}},
+	})
+	<-d.events // drain peer-found for peer-A
+
+	d.handlePeers(peersMsg{
+		Type:  msgPeers,
+		Peers: []peerEntry{{NodeID: "peer-B", Address: "10.0.0.2:9000"}},
+	})
+
+	var gotLost bool
+	for len(d.events) > 0 {
+		ev := <-d.events
+		if ev.Type == PeerLost && ev.PeerID == "peer-A" {
+			gotLost = true
+		}
+	}
+	if !gotLost {
+		t.Error("expected peer-lost event for evicted peer-A from PEERS handler")
 	}
 }
 

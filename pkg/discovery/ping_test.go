@@ -68,7 +68,7 @@ func newDiscovery(cfg Config, tr *captureSendTransport) *Discovery {
 	return &Discovery{
 		cfg:           cfg,
 		tr:            tr,
-		table:         newPeerTable(),
+		table:         newPeerTable(0),
 		events:        make(chan PeerEvent, 16),
 		stopCh:        make(chan struct{}),
 		pending:       make(map[string]string),

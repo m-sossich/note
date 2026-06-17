@@ -1,6 +1,9 @@
 package discovery
 
-import "sync"
+import (
+	"math/rand"
+	"sync"
+)
 
 type peerInfo struct {
 	NodeID    string
@@ -15,22 +18,51 @@ type peerRecord struct {
 }
 
 type peerTable struct {
-	mu    sync.RWMutex
-	peers map[string]*peerRecord
+	mu       sync.RWMutex
+	peers    map[string]*peerRecord
+	maxPeers int // 0 = unbounded
 }
 
-func newPeerTable() *peerTable {
-	return &peerTable{peers: make(map[string]*peerRecord)}
+func newPeerTable(maxPeers int) *peerTable {
+	return &peerTable{peers: make(map[string]*peerRecord), maxPeers: maxPeers}
 }
 
-func (t *peerTable) Add(nodeID, addr string, protocols []string) bool {
+// Add inserts a new peer. Returns (true, nil) on insertion, (false, nil) if the
+// peer already exists. When the table is full, evicts the peer with the highest
+// missed-ping count (random tiebreaker) and returns (true, evicted).
+func (t *peerTable) Add(nodeID, addr string, protocols []string) (bool, *peerInfo) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, exists := t.peers[nodeID]; exists {
-		return false
+		return false, nil
+	}
+	var evicted *peerInfo
+	if t.maxPeers > 0 && len(t.peers) >= t.maxPeers {
+		evicted = t.evictLocked()
 	}
 	t.peers[nodeID] = &peerRecord{info: peerInfo{NodeID: nodeID, Address: addr, Protocols: protocols}}
-	return true
+	return true, evicted
+}
+
+// evictLocked removes the peer with the highest missed count; breaks ties randomly.
+// Must be called with t.mu held.
+func (t *peerTable) evictLocked() *peerInfo {
+	maxMissed := -1
+	for _, p := range t.peers {
+		if p.missed > maxMissed {
+			maxMissed = p.missed
+		}
+	}
+	var candidates []*peerRecord
+	for _, p := range t.peers {
+		if p.missed == maxMissed {
+			candidates = append(candidates, p)
+		}
+	}
+	victim := candidates[rand.Intn(len(candidates))]
+	delete(t.peers, victim.info.NodeID)
+	info := victim.info
+	return &info
 }
 
 func (t *peerTable) Remove(nodeID string) {
