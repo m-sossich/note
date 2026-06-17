@@ -82,25 +82,26 @@ type registeredHandler struct {
 }
 
 type peerConfig struct {
-	advertiseAddr    string
-	bootstraps       []string
-	handlers         []registeredHandler
-	handlerFactories []func(node.Node)
-	codec            codec.Codec
-	maxFrameSize     uint32
-	protocolLimits   map[string]uint32
-	maxPeers         int
-	maxInboundPeers  int
-	maxPendingPeers  int
-	pingInterval     time.Duration
-	pingMaxMissed    int
-	handshakeTimeout time.Duration
-	dhtEnabled       bool
-	dhtCfg           dht.Config
-	identityPath     string
-	keypair          *identity.Keypair
-	onConnected      func(string)
-	onDisconnected   func(string)
+	advertiseAddr     string
+	bootstraps        []string
+	handlers          []registeredHandler
+	handlerFactories  []func(node.Node)
+	codec             codec.Codec
+	maxFrameSize      uint32
+	protocolLimits    map[string]uint32
+	maxPeers          int
+	maxInboundPeers   int
+	maxPendingPeers   int
+	pingInterval      time.Duration
+	pingMaxMissed     int
+	discoveryMaxPeers int
+	handshakeTimeout  time.Duration
+	dhtEnabled        bool
+	dhtCfg            dht.Config
+	identityPath      string
+	keypair           *identity.Keypair
+	onConnected       func(string)
+	onDisconnected    func(string)
 }
 
 // Option configures a Peer.
@@ -157,6 +158,13 @@ func WithMaxPendingPeers(n int) Option {
 // WithPingMaxMissed sets consecutive unanswered pings before eviction. Dead-peer window = PingInterval × n. Default: 3.
 func WithPingMaxMissed(n int) Option {
 	return func(c *peerConfig) { c.pingMaxMissed = n }
+}
+
+// WithDiscoveryMaxPeers caps the discovery peer table size. When full, the peer
+// with the most missed pings is evicted on each new ANNOUNCE; ties broken randomly.
+// Default 0 = unbounded. Set on bootstrap infrastructure to bound memory.
+func WithDiscoveryMaxPeers(n int) Option {
+	return func(c *peerConfig) { c.discoveryMaxPeers = n }
 }
 
 // WithHandshakeTimeout sets the handshake deadline (identity exchange or TLS). Default: 10s.
@@ -348,6 +356,7 @@ func newDiscovery(nodeID, addr, advertiseAddr string, c codec.Codec, cfg *peerCo
 		Codec:          c,
 		PingInterval:   cfg.pingInterval,
 		PingMaxMissed:  cfg.pingMaxMissed,
+		MaxPeers:       cfg.discoveryMaxPeers,
 	}, udpTr)
 	if err != nil {
 		udpTr.Close()

@@ -212,6 +212,14 @@ select {} // run until interrupted
 
 A bootstrap node registers no protocols — peers skip dialing it for TCP. Use `p.Addr()` for the actual bound address. Set `WithAdvertiseAddr("203.0.113.42:9000")` behind NAT.
 
+On public bootstrap infrastructure, set `WithDiscoveryMaxPeers` to cap the peer table. When full, the peer with the most consecutive missed pings is evicted; ties are broken randomly. This bounds memory and makes pre-join Sybil flooding require real, continuously-alive nodes.
+
+```go
+p, err := note.NewPeer("0.0.0.0:9000",
+    note.WithDiscoveryMaxPeers(10_000),
+)
+```
+
 ---
 
 ## Verified mode
@@ -262,6 +270,7 @@ defer p.Close()
 | `WithMaxPendingPeers(n)` | Concurrent in-progress handshakes cap (default 32) |
 | `WithPingInterval(d)` | How often to probe peer liveness (default 1s) |
 | `WithPingMaxMissed(n)` | Consecutive unanswered pings before eviction (default 3) |
+| `WithDiscoveryMaxPeers(n)` | Discovery peer table size cap; 0 = unbounded (default). Evicts least-live peer on overflow. |
 | `WithHandshakeTimeout(d)` | Deadline for completing a connection handshake (default 10s) |
 | `WithMaxFrameSize(bytes)` | Global transport ceiling for max payload per message (default 64 KiB) |
 | `WithProtocolFrameSize(protocol, bytes)` | Per-protocol frame size cap enforced at dispatch time |

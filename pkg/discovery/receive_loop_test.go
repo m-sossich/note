@@ -53,7 +53,7 @@ func TestReceiveLoop_SurvivesTransientErrors(t *testing.T) {
 	d := &Discovery{
 		cfg:    Config{NodeID: "test-node", PingInterval: time.Hour, PingMaxMissed: 3},
 		tr:     ft,
-		table:  newPeerTable(),
+		table:  newPeerTable(0),
 		events: make(chan PeerEvent, 8),
 		stopCh: make(chan struct{}),
 	}

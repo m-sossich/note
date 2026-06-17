@@ -25,7 +25,10 @@ func (d *Discovery) handleAnnounce(fromAddr string, msg announceMsg) {
 			return
 		}
 	}
-	added := d.table.Add(msg.NodeID, msg.Address, msg.Protocols)
+	added, evicted := d.table.Add(msg.NodeID, msg.Address, msg.Protocols)
+	if evicted != nil {
+		d.emitEvent(PeerEvent{Type: PeerLost, PeerID: evicted.NodeID, Address: evicted.Address})
+	}
 	if added {
 		d.emitEvent(PeerEvent{
 			Type:      PeerFound,
