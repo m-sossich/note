@@ -78,6 +78,7 @@ type nodeImpl struct {
 	protocols      map[string]ProtocolHandler
 	protoMu        sync.RWMutex
 	peerProtocols  map[string][]string
+	declaredAddrs  map[string]string // peerID → announced listening address from discovery
 	peerProtoMu    sync.RWMutex
 	listener       transport.Listener
 	boundAddr      string
@@ -108,6 +109,7 @@ func New(cfg Config, disc PeerSource) (Node, error) {
 		dialing:       make(map[string]struct{}),
 		protocols:     make(map[string]ProtocolHandler),
 		peerProtocols: make(map[string][]string),
+		declaredAddrs: make(map[string]string),
 		peerSem:       make(chan struct{}, cfg.MaxPeers),
 		inboundGuard:  make(chan struct{}, cfg.MaxInboundPeers),
 		pendingSem:    make(chan struct{}, cfg.MaxPendingPeers),
@@ -405,9 +407,14 @@ func (n *nodeImpl) handlePeerFound(ev discovery.PeerEvent) {
 	if ev.PeerID == n.cfg.NodeID {
 		return
 	}
-	if ev.Protocols != nil {
+	if ev.Address != "" || ev.Protocols != nil {
 		n.peerProtoMu.Lock()
-		n.peerProtocols[ev.PeerID] = ev.Protocols
+		if ev.Address != "" {
+			n.declaredAddrs[ev.PeerID] = ev.Address
+		}
+		if ev.Protocols != nil {
+			n.peerProtocols[ev.PeerID] = ev.Protocols
+		}
 		n.peerProtoMu.Unlock()
 		if n.cfg.OnPeerCapabilitiesKnown != nil {
 			n.mu.RLock()
@@ -438,6 +445,7 @@ func (n *nodeImpl) handlePeerFound(ev discovery.PeerEvent) {
 func (n *nodeImpl) handlePeerLost(ev discovery.PeerEvent) {
 	n.peerProtoMu.Lock()
 	delete(n.peerProtocols, ev.PeerID)
+	delete(n.declaredAddrs, ev.PeerID)
 	n.peerProtoMu.Unlock()
 	n.wg.Add(1)
 	go func() {
@@ -556,9 +564,13 @@ func (n *nodeImpl) ConnectionInfo(peerID string) (ConnInfo, bool) {
 	if !ok {
 		return ConnInfo{}, false
 	}
+	n.peerProtoMu.RLock()
+	declared := n.declaredAddrs[peerID]
+	n.peerProtoMu.RUnlock()
 	return ConnInfo{
-		RemoteAddr: conn.RemoteAddr(),
-		PublicKey:  conn.publicKey,
+		RemoteAddr:   conn.RemoteAddr(),
+		DeclaredAddr: declared,
+		PublicKey:    conn.publicKey,
 	}, true
 }
 

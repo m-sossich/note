@@ -424,9 +424,9 @@ func (d *DHT) handleStore(peerID string, decode func(any) error) error {
 	}
 	address := req.Address
 	if address == "" {
-		// Fallback for older senders that omit Address.
+		// Fallback for senders that omit Address — use declared address, never ephemeral.
 		if info, ok := d.n.ConnectionInfo(peerID); ok {
-			address = info.RemoteAddr
+			address = info.DeclaredAddr
 		}
 	}
 	d.storeLocal(target, ProviderRecord{
@@ -450,16 +450,16 @@ func (d *DHT) dispatchResponse(decode func(any) error) error {
 	return nil
 }
 
-// refreshSender updates the routing table with the sender's address.
-// Note: inbound connections expose the ephemeral port, not the declared listen address.
+// refreshSender updates the routing table with the sender's declared address.
+// Skips peers whose declared address is unknown — ephemeral source ports are not dialable (DHT-2).
 func (d *DHT) refreshSender(peerID string) {
 	info, ok := d.n.ConnectionInfo(peerID)
-	if !ok {
+	if !ok || info.DeclaredAddr == "" {
 		return
 	}
 	sender := NodeInfo{
 		NodeID:    peerID,
-		Address:   info.RemoteAddr,
+		Address:   info.DeclaredAddr,
 		Key:       KeyFromString(peerID),
 		PublicKey: info.PublicKey,
 	}

@@ -30,6 +30,67 @@ func (nopNode) BoundAddr() string                             { return "" }
 func (nopNode) PeerProtocols(_ string) ([]string, bool)       { return nil, false }
 func (nopNode) RegisteredProtocols() []string                 { return nil }
 
+// stubNode is a nopNode with a controllable ConnectionInfo response.
+type stubNode struct {
+	nopNode
+	info node.ConnInfo
+	ok   bool
+}
+
+func (s *stubNode) ConnectionInfo(_ string) (node.ConnInfo, bool) { return s.info, s.ok }
+
+// ---------------------------------------------------------------------------
+// refreshSender
+// ---------------------------------------------------------------------------
+
+// TestRefreshSender_UsesDeclaredAddr verifies that refreshSender inserts the
+// peer's DeclaredAddr (not RemoteAddr) into the routing table — satisfying DHT-2.
+func TestRefreshSender_UsesDeclaredAddr(t *testing.T) {
+	n := &stubNode{
+		info: node.ConnInfo{RemoteAddr: "10.0.0.1:54321", DeclaredAddr: "10.0.0.1:9000"},
+		ok:   true,
+	}
+	d := &DHT{
+		cfg:   Config{BucketSize: defaultBucketSize},
+		local: NodeInfo{NodeID: "local", Key: KeyFromString("local")},
+		table: newRoutingTable(KeyFromString("local"), defaultBucketSize),
+		n:     n,
+	}
+
+	d.refreshSender("peer-A")
+
+	nodes := d.table.FindClosest(KeyFromString("peer-A"), 1)
+	if len(nodes) == 0 {
+		t.Fatal("routing table should contain peer-A after refreshSender")
+	}
+	if nodes[0].Address != "10.0.0.1:9000" {
+		t.Errorf("routing table address = %q, want declared addr %q", nodes[0].Address, "10.0.0.1:9000")
+	}
+}
+
+// TestRefreshSender_SkipsWhenNoDeclaredAddr verifies that refreshSender does not
+// insert an entry when DeclaredAddr is empty — prevents ephemeral ports in the
+// routing table (DHT-2).
+func TestRefreshSender_SkipsWhenNoDeclaredAddr(t *testing.T) {
+	n := &stubNode{
+		info: node.ConnInfo{RemoteAddr: "10.0.0.1:54321", DeclaredAddr: ""},
+		ok:   true,
+	}
+	d := &DHT{
+		cfg:   Config{BucketSize: defaultBucketSize},
+		local: NodeInfo{NodeID: "local", Key: KeyFromString("local")},
+		table: newRoutingTable(KeyFromString("local"), defaultBucketSize),
+		n:     n,
+	}
+
+	d.refreshSender("peer-B")
+
+	nodes := d.table.FindClosest(KeyFromString("peer-B"), 1)
+	if len(nodes) > 0 {
+		t.Errorf("routing table should be empty when DeclaredAddr is unknown, got %v", nodes)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // wireToNodeInfo / wireToNodeInfos — now methods on *DHT
 // ---------------------------------------------------------------------------
