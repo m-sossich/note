@@ -3,18 +3,22 @@ package dht
 import "time"
 
 const (
-	defaultBucketSize          = 8
-	defaultAlpha               = 3
-	defaultRequestTimeout      = 10 * time.Second
-	defaultBucketProbeInterval = 2 * time.Minute
+	defaultBucketSize           = 8
+	defaultAlpha                = 3
+	defaultRequestTimeout       = 10 * time.Second
+	defaultBucketProbeInterval  = 2 * time.Minute
+	defaultRecordTTL            = 24 * time.Hour
+	defaultStoreCleanupInterval = 10 * time.Minute
 )
 
 // Config controls DHT tuning. Zero values use defaults.
 type Config struct {
-	BucketSize          int           // k-bucket capacity (Kademlia "k"); default: 8
-	Alpha               int           // concurrent RPCs per lookup round; default: 3
-	RequestTimeout      time.Duration // per-RPC deadline; default: 10s
-	BucketProbeInterval time.Duration // how often to probe full buckets; default: 2m
+	BucketSize           int           // k-bucket capacity (Kademlia "k"); default: 8
+	Alpha                int           // concurrent RPCs per lookup round; default: 3
+	RequestTimeout       time.Duration // per-RPC deadline; default: 10s
+	BucketProbeInterval  time.Duration // how often to probe full buckets; default: 2m
+	RecordTTL            time.Duration // provider record lifetime; re-announcing refreshes it; default: 24h
+	StoreCleanupInterval time.Duration // how often expired records are evicted; default: 10m
 	// EntryValidator rejects routing entries that fail proof of identity. nil accepts all.
 	EntryValidator func(nodeID string, pubKey []byte) bool
 }
@@ -31,5 +35,11 @@ func (c *Config) setDefaults() {
 	}
 	if c.BucketProbeInterval == 0 {
 		c.BucketProbeInterval = defaultBucketProbeInterval
+	}
+	if c.RecordTTL == 0 {
+		c.RecordTTL = defaultRecordTTL
+	}
+	if c.StoreCleanupInterval == 0 {
+		c.StoreCleanupInterval = defaultStoreCleanupInterval
 	}
 }

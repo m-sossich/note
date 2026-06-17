@@ -3,6 +3,7 @@ package dht_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	jsoncdc "github.com/m-sossich/note/pkg/codec/json"
 	"github.com/m-sossich/note/pkg/dht"
@@ -57,6 +58,38 @@ func TestDHT_LocalStore(t *testing.T) {
 	}
 	if string(providers[0].Value) != string(value) {
 		t.Errorf("provider value = %q, want %q", providers[0].Value, value)
+	}
+}
+
+// TestDHT_FindProviders_ExpiredRecord verifies that FindProviders returns no
+// results after a record's TTL has elapsed — the full path from Store through
+// the expiry check in lookupLocal.
+func TestDHT_FindProviders_ExpiredRecord(t *testing.T) {
+	nA := startNode(t, "dht-ttl-A", "127.0.0.1:19609")
+	dhtA := dht.New(nA, "dht-ttl-A", "127.0.0.1:19609", dht.Config{
+		RecordTTL: 20 * time.Millisecond,
+	})
+	t.Cleanup(func() { dhtA.Stop() })
+
+	key := []byte("ephemeral-key")
+	if _, err := dhtA.Store(context.Background(), key, nil); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+
+	// Confirm the record is live immediately after storing.
+	providers, err := dhtA.FindProviders(context.Background(), key)
+	if err != nil || len(providers) == 0 {
+		t.Fatalf("FindProviders before expiry: expected 1 provider, got %d (err=%v)", len(providers), err)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+
+	providers, err = dhtA.FindProviders(context.Background(), key)
+	if err != nil {
+		t.Fatalf("FindProviders after expiry: unexpected error: %v", err)
+	}
+	if len(providers) != 0 {
+		t.Errorf("FindProviders after expiry: expected 0 providers, got %d", len(providers))
 	}
 }
 
