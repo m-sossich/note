@@ -54,19 +54,24 @@ func (t *Transport) Listen(addr string) (transport.Listener, error) {
 func (t *Transport) Close() error { return nil }
 
 func (t *Transport) clientConfig() *gotls.Config {
-	return &gotls.Config{
-		Certificates:          []gotls.Certificate{t.kp.TLSCert},
-		InsecureSkipVerify:    true, // no CA hierarchy; verification is via verifyP2PCert
-		VerifyPeerCertificate: verifyP2PCert,
-	}
+	return withP2PVerification(&gotls.Config{
+		Certificates: []gotls.Certificate{t.kp.TLSCert},
+	})
 }
 
 func (t *Transport) serverConfig() *gotls.Config {
-	return &gotls.Config{
-		Certificates:          []gotls.Certificate{t.kp.TLSCert},
-		ClientAuth:            gotls.RequireAnyClientCert,
-		VerifyPeerCertificate: verifyP2PCert,
-	}
+	return withP2PVerification(&gotls.Config{
+		Certificates: []gotls.Certificate{t.kp.TLSCert},
+		ClientAuth:   gotls.RequireAnyClientCert,
+	})
+}
+
+// withP2PVerification replaces CA chain validation with P2P identity verification:
+// CN == SHA-256(Ed25519 pubkey). Peers use self-signed certs with no CA.
+func withP2PVerification(cfg *gotls.Config) *gotls.Config {
+	cfg.InsecureSkipVerify = true
+	cfg.VerifyPeerCertificate = verifyP2PCert
+	return cfg
 }
 
 type listener struct {

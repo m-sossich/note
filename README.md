@@ -228,7 +228,7 @@ defer p.Close()
 
 **What verified mode provides:**
 - All TCP connections encrypted and integrity-protected (mTLS)
-- Both sides prove they own their node identity
+- Both sides prove they own their node identity — each peer presents a self-signed Ed25519 certificate; the TLS handshake proves key ownership; identity is `SHA-256(pubkey)` bound to the cert's CN
 - Bootstrap peer tables reject fake identities — ANNOUNCE messages are signed
 - DHT routing table injection closed — routing entries without cryptographic proof of identity are rejected
 
