@@ -458,7 +458,6 @@ Defaults: 128 total / MaxPeers×2/3 inbound / 32 pending.
 | `demo/chat` | Distributed chat with DHT room membership, mTLS, `WithHandlerFactory` | [chat/README.md](demo/chat/README.md) |
 | `demo/cas` | IPFS-like content-addressed storage: SHA-256 CIDs, chunked parallel multi-provider fetch, deduplication | [cas/README.md](demo/cas/README.md) |
 | `demo/gossip` | Epidemic broadcast; user-space deduplication, relay-skipping with `Peers()` + `Send()` | [gossip/README.md](demo/gossip/README.md) |
-| `demo/fileshare` | DHT-based file discovery and direct transfer | [fileshare/README.md](demo/fileshare/README.md) |
 
 ---
 
