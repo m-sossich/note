@@ -96,3 +96,14 @@ type storeAck struct {
 	RequestID string
 	OK        bool
 }
+
+// dhtResponse is the unified decoded form of all DHT response messages.
+// dispatchResponse decodes any response into this struct exactly once,
+// eliminating re-entrant decode calls. Exactly one of Nodes, Providers,
+// or OK is meaningful per RPC type.
+type dhtResponse struct {
+	RequestID string
+	Nodes     []nodeInfoWire
+	Providers []providerRecordWire
+	OK        bool
+}
