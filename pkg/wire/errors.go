@@ -4,7 +4,6 @@ package wire
 const (
 	CodeUnsupportedVersion = "UNSUPPORTED_VERSION"
 	CodeDecodeError        = "DECODE_ERROR"
-	CodeNoHandler          = "NO_HANDLER"
 	CodeFrameTooLarge      = "FRAME_TOO_LARGE"
 )
 

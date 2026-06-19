@@ -101,7 +101,7 @@ Sub-protocols must be registered before the node starts. There is no dynamic reg
 
 **NOD-5** — All sub-protocol handlers MUST be registered before the node begins accepting or initiating connections.
 
-Each sub-protocol has exactly one handler. If a node receives a message for a sub-protocol with no registered handler, it silently drops the message and logs a warning. The connection stays open — the peer can continue sending on other sub-protocols. A `NO_HANDLER` error frame is intentionally NOT sent because sending it would close the connection, disrupting relay nodes that forward protocols they do not handle locally.
+Each sub-protocol has exactly one handler. If a node receives a message for a sub-protocol with no registered handler, it silently drops the message and logs a warning. The connection stays open — the peer can continue sending on other sub-protocols. An error frame is intentionally NOT sent because sending it would close the connection, disrupting relay nodes that forward protocols they do not handle locally.
 
 Multiple sub-protocols share the same TCP connections. There is no separate connection per protocol. This is intentional: opening a new TCP connection for each protocol would multiply handshake overhead and connection counts. Multiplexing over one connection is efficient and keeps lifecycle management simple.
 
@@ -142,7 +142,7 @@ wire.Decode → Frame { Type, Payload }
 
 The `decodeFn` passed to the handler is a closure over `Envelope.Payload` and the connection's codec. When the handler calls `decodeFn(&myStruct)`, it decodes the inner message body. The handler never imports or references the codec — it just calls a function. This means handlers can be unit-tested with a trivial mock decode function, with no wire format involved.
 
-**NOD-6** — Every inbound `APPLICATION` message MUST be delivered to the handler registered for its sub-protocol. If no handler is registered, the node MUST silently drop the message (log a WARN) and MUST keep the connection open. The node MUST NOT send a `NO_HANDLER` error frame — doing so would close the connection and disrupt relay nodes that legitimately forward protocols they do not handle.
+**NOD-6** — Every inbound `APPLICATION` message MUST be delivered to the handler registered for its sub-protocol. If no handler is registered, the node MUST silently drop the message (log a WARN) and MUST keep the connection open. The node MUST NOT send an error frame — doing so would close the connection and disrupt relay nodes that legitimately forward protocols they do not handle.
 
 **NOD-7** — A `DECODE_ERROR` at the frame level (the outer `wire.Decode` call) MUST close the connection after sending an `ERROR` frame.
 
@@ -230,7 +230,7 @@ The three limits work together: an inbound connection must satisfy both `MaxInbo
 | NOD-3 | MUST | Handshake completes within a configured timeout; failure closes the connection |
 | NOD-4 | — | Handshake implementation is pluggable |
 | NOD-5 | MUST | Register all handlers before the node starts |
-| NOD-6 | MUST | Silently drop (log WARN) APPLICATION messages for unregistered sub-protocols; keep connection open; MUST NOT send NO_HANDLER error |
+| NOD-6 | MUST | Silently drop (log WARN) APPLICATION messages for unregistered sub-protocols; keep connection open; MUST NOT send an error frame |
 | NOD-7 | MUST | Close connection on frame-level DECODE_ERROR |
 | NOD-8 | MUST | Close connection on envelope-level DECODE_ERROR |
 | NOD-9 | SHOULD / MUST | Dial on peer-found; ignore self and duplicate dials; skip dial when event carries an empty (non-nil) protocol list |
