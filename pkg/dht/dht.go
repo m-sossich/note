@@ -50,7 +50,7 @@ type DHT struct {
 	store    map[DHTKey][]storedRecord
 	storeMu  sync.RWMutex
 	n        nodeLink
-	pending  p2p.PendingMap[func(any) error]
+	pending  p2p.PendingMap[*dhtResponse]
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	wg       sync.WaitGroup
@@ -70,7 +70,7 @@ func New(n nodeLink, nodeID string, address string, cfg Config) *DHT {
 		table:   newRoutingTable(key, cfg.BucketSize),
 		store:   make(map[DHTKey][]storedRecord),
 		n:       n,
-		pending: *p2p.NewPendingMap[func(any) error](),
+		pending: *p2p.NewPendingMap[*dhtResponse](),
 		stopCh:  make(chan struct{}),
 	}
 	n.Register(Protocol, d.handleMessage)
@@ -282,10 +282,10 @@ func (d *DHT) iterativeFindProviders(ctx context.Context, target DHTKey) ([]Prov
 }
 
 // sendRPC sends msgType to peer and blocks until a response arrives or ctx is cancelled.
-func (d *DHT) sendRPC(ctx context.Context, peer NodeInfo, reqID, msgType string, msg any) (func(any) error, error) {
+func (d *DHT) sendRPC(ctx context.Context, peer NodeInfo, reqID, msgType string, msg any) (*dhtResponse, error) {
 	rpcCtx, cancel := context.WithTimeout(ctx, d.cfg.RequestTimeout)
 	defer cancel()
-	decode, err := d.pending.Wait(rpcCtx, reqID, func() error {
+	resp, err := d.pending.Wait(rpcCtx, reqID, func() error {
 		_, err := d.n.Send(peer.NodeID, Protocol, msgType, msg)
 		if err != nil {
 			return fmt.Errorf("send %s to %s: %w", msgType, peer.NodeID, err)
@@ -298,38 +298,30 @@ func (d *DHT) sendRPC(ctx context.Context, peer NodeInfo, reqID, msgType string,
 	if err != nil {
 		return nil, fmt.Errorf("%s cancelled for peer %s: %w", msgType, peer.NodeID, err)
 	}
-	return decode, nil
+	return resp, nil
 }
 
 func (d *DHT) sendFindNode(ctx context.Context, peer NodeInfo, target DHTKey) ([]NodeInfo, error) {
 	reqID := uuid.New().String()
 	msg := findNode{RequestID: reqID, Key: encodeHex(target)}
-	decode, err := d.sendRPC(ctx, peer, reqID, msgFindNode, msg)
+	resp, err := d.sendRPC(ctx, peer, reqID, msgFindNode, msg)
 	if err != nil {
 		return nil, err
 	}
-	var result findNodeResult
-	if err := decode(&result); err != nil {
-		return nil, fmt.Errorf("decode FIND_NODE_RESULT: %w", err)
-	}
-	return d.wireToNodeInfos(result.Nodes), nil
+	return d.wireToNodeInfos(resp.Nodes), nil
 }
 
 func (d *DHT) sendFindProviders(ctx context.Context, peer NodeInfo, target DHTKey) ([]ProviderRecord, []NodeInfo, error) {
 	reqID := uuid.New().String()
 	msg := findProviders{RequestID: reqID, Key: encodeHex(target)}
-	decode, err := d.sendRPC(ctx, peer, reqID, msgFindProviders, msg)
+	resp, err := d.sendRPC(ctx, peer, reqID, msgFindProviders, msg)
 	if err != nil {
 		return nil, nil, err
 	}
-	var result findProvidersResult
-	if err := decode(&result); err != nil {
-		return nil, nil, fmt.Errorf("decode FIND_PROVIDERS_RESULT: %w", err)
+	if len(resp.Providers) > 0 {
+		return wireToProviderRecords(resp.Providers), nil, nil
 	}
-	if len(result.Providers) > 0 {
-		return wireToProviderRecords(result.Providers), nil, nil
-	}
-	return nil, d.wireToNodeInfos(result.Nodes), nil
+	return nil, d.wireToNodeInfos(resp.Nodes), nil
 }
 
 // sendStore sends STORE to peer. The declared address is included so the receiver stores a dialable address.
@@ -342,15 +334,11 @@ func (d *DHT) sendStore(ctx context.Context, peer NodeInfo, key, value []byte) e
 		Value:     encodeB64(value),
 		Address:   d.local.Address,
 	}
-	decode, err := d.sendRPC(ctx, peer, reqID, msgStore, msg)
+	resp, err := d.sendRPC(ctx, peer, reqID, msgStore, msg)
 	if err != nil {
 		return err
 	}
-	var ack storeAck
-	if err := decode(&ack); err != nil {
-		return fmt.Errorf("decode STORE_ACK: %w", err)
-	}
-	if !ack.OK {
+	if !resp.OK {
 		return fmt.Errorf("STORE rejected by peer %s", peer.NodeID)
 	}
 	return nil
@@ -445,15 +433,13 @@ func (d *DHT) handleStore(peerID string, decode func(any) error) error {
 	return err
 }
 
-// dispatchResponse routes a response to the sendRPC caller waiting on its RequestID.
+// dispatchResponse decodes the full response once and routes it to the waiting sendRPC caller.
 func (d *DHT) dispatchResponse(decode func(any) error) error {
-	var header struct {
-		RequestID string
+	var resp dhtResponse
+	if err := decode(&resp); err != nil {
+		return fmt.Errorf("dht: parse response: %w", err)
 	}
-	if err := decode(&header); err != nil {
-		return fmt.Errorf("dht: parse response request_id: %w", err)
-	}
-	d.pending.Deliver(header.RequestID, decode)
+	d.pending.Deliver(resp.RequestID, &resp)
 	return nil
 }
 

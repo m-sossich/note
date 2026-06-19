@@ -402,11 +402,57 @@ func TestParseKeyedRequest_InvalidHexKey(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// dispatchResponse — single decode
+// ---------------------------------------------------------------------------
+
+// TestDispatchResponse_DecodesOnce verifies that dispatchResponse calls the
+// decode closure exactly once, regardless of how many fields the response has.
+// Previously the closure was called once to extract RequestID and delivered
+// for a second call by the RPC caller — the re-entrancy bug this change closes.
+func TestDispatchResponse_DecodesOnce(t *testing.T) {
+	calls := 0
+	reqID := "test-req-id"
+
+	// Build a FIND_NODE_RESULT payload: encode a findNodeResult.
+	payload, _ := json.Marshal(findNodeResult{RequestID: reqID, Nodes: nil})
+	countingDecode := func(v any) error {
+		calls++
+		return json.Unmarshal(payload, v)
+	}
+
+	d := &DHT{
+		cfg:     Config{BucketSize: defaultBucketSize},
+		pending: *p2p.NewPendingMap[*dhtResponse](),
+	}
+
+	ch := d.pending.Register(reqID)
+	if err := d.dispatchResponse(countingDecode); err != nil {
+		t.Fatalf("dispatchResponse: %v", err)
+	}
+
+	select {
+	case resp := <-ch:
+		if resp == nil {
+			t.Fatal("expected non-nil response")
+		}
+		if resp.RequestID != reqID {
+			t.Errorf("RequestID = %q, want %q", resp.RequestID, reqID)
+		}
+	default:
+		t.Fatal("no response delivered to pending map")
+	}
+
+	if calls != 1 {
+		t.Errorf("decode called %d time(s), want exactly 1", calls)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // handleMessage — unknown type
 // ---------------------------------------------------------------------------
 
 func TestHandleMessage_UnknownType(t *testing.T) {
-	d := &DHT{n: nopNode{}, pending: *p2p.NewPendingMap[func(any) error]()}
+	d := &DHT{n: nopNode{}, pending: *p2p.NewPendingMap[*dhtResponse]()}
 	err := d.handleMessage("peer-1", "UNKNOWN_MSG_TYPE", jsonDecoder([]byte("{}")))
 	if err == nil {
 		t.Fatal("expected error for unknown message type, got nil")
