@@ -3,6 +3,7 @@ package discovery
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
@@ -11,6 +12,18 @@ import (
 	"github.com/m-sossich/note/pkg/identity"
 	"github.com/m-sossich/note/pkg/transport"
 )
+
+// isUnspecifiedAddr returns true when the host part of addr is an unspecified
+// IP (0.0.0.0 or ::). Advertising such an address is a misconfiguration —
+// other nodes cannot dial it.
+func isUnspecifiedAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsUnspecified()
+}
 
 type PeerEventType int
 
@@ -80,6 +93,10 @@ func New(cfg Config, tr transport.PacketTransport) (*Discovery, error) {
 		return nil, fmt.Errorf("discovery: NodeID is required")
 	}
 	cfg.setDefaults()
+	if isUnspecifiedAddr(cfg.advertiseAddr()) {
+		slog.Warn("discovery: AdvertiseAddr is unspecified — peers cannot dial this address; set WithAdvertiseAddr to a routable IP",
+			"addr", cfg.advertiseAddr())
+	}
 	return &Discovery{
 		cfg:           cfg,
 		tr:            tr,
