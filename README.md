@@ -212,6 +212,23 @@ select {} // run until interrupted
 
 A bootstrap node registers no protocols — peers skip dialing it for TCP. Use `p.Addr()` for the actual bound address. Set `WithAdvertiseAddr("203.0.113.42:9000")` behind NAT.
 
+---
+
+## IPv6
+
+IPv6 addresses work everywhere an IPv4 address does. Use `[::1]` for loopback, `[::]:port` to bind all interfaces.
+
+```go
+p, err := note.NewPeer("[::1]:9000",
+    note.WithAdvertiseAddr("[::1]:9000"),
+    note.WithBootstrap("[::1]:9001"),
+)
+```
+
+**Always set `WithAdvertiseAddr` explicitly on IPv6.** If you bind to `[::]:9000` without it, the library will warn and peers will receive `[::]` — the IPv6 unspecified address — which they cannot dial. Same rule applies to `0.0.0.0` on IPv4.
+
+Link-local addresses (`fe80::`) are interface-scoped. Do not advertise them to peers on different network segments.
+
 On public bootstrap infrastructure, set `WithDiscoveryMaxPeers` to cap the peer table. When full, the peer with the most consecutive missed pings is evicted; ties are broken randomly. This bounds memory and makes pre-join Sybil flooding require real, continuously-alive nodes.
 
 ```go

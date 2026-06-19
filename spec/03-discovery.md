@@ -122,6 +122,8 @@ This is the single most common misconfiguration in UDP-based P2P networks. When 
 
 Set `AdvertiseAddr` to the externally routable address. In a cloud environment, this is the instance's public or Elastic IP. In Docker, it is the host machine's IP. For local development and testing, use `127.0.0.1` explicitly rather than `0.0.0.0` — even if everything runs on one machine, the distinction matters once you run more than one node.
 
+**IPv6.** The same rule applies for IPv6. `[::]` is the IPv6 unspecified address — do not advertise it. Use `[::1]` for loopback or the node's routable IPv6 address. The library warns at startup when the effective advertise address is `0.0.0.0` or `[::]`. Note also that link-local addresses (`fe80::`) are scoped to a single network interface and cannot be dialed from a different segment — set `AdvertiseAddr` to a globally routable address when nodes span network segments.
+
 
 ## Peer Lifecycle Notifications
 
